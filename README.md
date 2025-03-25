@@ -45,7 +45,7 @@ On Windows: `%APPDATA%/Claude/claude_desktop_config.json`
       "command": "uv",
       "args": [
         "--directory",
-        "/Users/jssmith/c/postgres-mcp",
+        "{{PATH TO CHECKOUT}}/postgres-mcp",
         "run",
         "postgres-mcp"
       ]
@@ -104,7 +104,7 @@ experience, we strongly recommend using the [MCP Inspector](https://github.com/m
 You can launch the MCP Inspector via [`npm`](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) with this command:
 
 ```bash
-npx @modelcontextprotocol/inspector uv --directory /Users/jssmith/c/postgres-mcp run postgres-mcp
+npx @modelcontextprotocol/inspector uv --directory {{PATH TO CHECKOUT}}/postgres-mcp run postgres-mcp
 ```
 
 

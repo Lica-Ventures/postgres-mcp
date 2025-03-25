@@ -1,115 +1,96 @@
 import asyncio
+import os
+import sys
+from urllib.parse import urlparse
 
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from pydantic import AnyUrl
 import mcp.server.stdio
 
-# Store notes as a simple key-value dict to demonstrate state management
-notes: dict[str, str] = {}
-
 server = Server("postgres-mcp")
+
+# Global connection pool
+conn = None
+SCHEMA_PATH = "schema"
+
+def get_connection():
+    global conn
+    if not conn:
+        raise ValueError("Database connection not initialized")
+    return conn
 
 @server.list_resources()
 async def handle_list_resources() -> list[types.Resource]:
-    """
-    List available note resources.
-    Each note is exposed as a resource with a custom note:// URI scheme.
-    """
-    return [
-        types.Resource(
-            uri=AnyUrl(f"note://internal/{name}"),
-            name=f"Note: {name}",
-            description=f"A simple note named {name}",
-            mimeType="text/plain",
-        )
-        for name in notes
-    ]
+    """List available database tables as resources."""
+    try:
+        with get_connection().cursor() as cursor:
+            cursor.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            )
+            tables = cursor.fetchall()
+
+            base_url = urlparse(os.environ.get("DATABASE_URL", ""))
+            base_url = base_url._replace(scheme="postgres", password="")
+            base_url = base_url.geturl()
+
+            return [
+                types.Resource(
+                    uri=AnyUrl(f"{base_url}/{table[0]}/{SCHEMA_PATH}"),
+                    name=f'"{table[0]}" database schema',
+                    description=f"Schema for table {table[0]}",
+                    mimeType="application/json",
+                )
+                for table in tables
+            ]
+    except Exception as e:
+        print(f"Error listing resources: {e}", file=sys.stderr)
+        return []
 
 @server.read_resource()
 async def handle_read_resource(uri: AnyUrl) -> str:
-    """
-    Read a specific note's content by its URI.
-    The note name is extracted from the URI host component.
-    """
-    if uri.scheme != "note":
+    """Read schema information for a specific table."""
+    if uri.scheme != "postgres":
         raise ValueError(f"Unsupported URI scheme: {uri.scheme}")
 
-    name = uri.path
-    if name is not None:
-        name = name.lstrip("/")
-        return notes[name]
-    raise ValueError(f"Note not found: {name}")
+    path_parts = uri.path.strip("/").split("/")
+    if len(path_parts) != 2 or path_parts[1] != SCHEMA_PATH:
+        raise ValueError("Invalid resource URI")
 
-@server.list_prompts()
-async def handle_list_prompts() -> list[types.Prompt]:
-    """
-    List available prompts.
-    Each prompt can have optional arguments to customize its behavior.
-    """
-    return [
-        types.Prompt(
-            name="summarize-notes",
-            description="Creates a summary of all notes",
-            arguments=[
-                types.PromptArgument(
-                    name="style",
-                    description="Style of the summary (brief/detailed)",
-                    required=False,
-                )
-            ],
-        )
-    ]
+    table_name = path_parts[0]
 
-@server.get_prompt()
-async def handle_get_prompt(
-    name: str, arguments: dict[str, str] | None
-) -> types.GetPromptResult:
-    """
-    Generate a prompt by combining arguments with server state.
-    The prompt includes all current notes and can be customized via arguments.
-    """
-    if name != "summarize-notes":
-        raise ValueError(f"Unknown prompt: {name}")
-
-    style = (arguments or {}).get("style", "brief")
-    detail_prompt = " Give extensive details." if style == "detailed" else ""
-
-    return types.GetPromptResult(
-        description="Summarize the current notes",
-        messages=[
-            types.PromptMessage(
-                role="user",
-                content=types.TextContent(
-                    type="text",
-                    text=f"Here are the current notes to summarize:{detail_prompt}\n\n"
-                    + "\n".join(
-                        f"- {name}: {content}"
-                        for name, content in notes.items()
-                    ),
-                ),
+    try:
+        with get_connection().cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT column_name, data_type
+                FROM information_schema.columns
+                WHERE table_name = %s
+                """,
+                [table_name]
             )
-        ],
-    )
+            columns = cursor.fetchall()
+            return str([{"column_name": col[0], "data_type": col[1]} for col in columns])
+    except Exception as e:
+        print(f"Error reading resource: {e}", file=sys.stderr)
+        raise
 
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
-    """
-    List available tools.
-    Each tool specifies its arguments using JSON Schema validation.
-    """
+    """List available database tools."""
     return [
         types.Tool(
-            name="add-note",
-            description="Add a new note",
+            name="query",
+            description="Run a read-only SQL query",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string"},
-                    "content": {"type": "string"},
+                    "sql": {"type": "string"},
                 },
-                "required": ["name", "content"],
+                "required": ["sql"],
             },
         )
     ]
@@ -118,47 +99,68 @@ async def handle_list_tools() -> list[types.Tool]:
 async def handle_call_tool(
     name: str, arguments: dict | None
 ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
-    """
-    Handle tool execution requests.
-    Tools can modify server state and notify clients of changes.
-    """
-    if name != "add-note":
+    """Handle tool execution requests."""
+    if name != "query":
         raise ValueError(f"Unknown tool: {name}")
 
-    if not arguments:
-        raise ValueError("Missing arguments")
+    if not arguments or "sql" not in arguments:
+        raise ValueError("Missing SQL query")
 
-    note_name = arguments.get("name")
-    content = arguments.get("content")
+    sql = arguments["sql"]
 
-    if not note_name or not content:
-        raise ValueError("Missing name or content")
-
-    # Update server state
-    notes[note_name] = content
-
-    # Notify clients that resources have changed
-    await server.request_context.session.send_resource_list_changed()
-
-    return [
-        types.TextContent(
-            type="text",
-            text=f"Added note '{note_name}' with content: {content}",
-        )
-    ]
+    try:
+        with get_connection().cursor(cursor_factory=RealDictCursor) as cursor:
+            # Start read-only transaction
+            cursor.execute("BEGIN TRANSACTION READ ONLY")
+            try:
+                cursor.execute(sql)
+                rows = cursor.fetchall()
+                return [
+                    types.TextContent(
+                        type="text",
+                        text=str(list(rows))
+                    )
+                ]
+            finally:
+                cursor.execute("ROLLBACK")
+    except Exception as e:
+        print(f"Error executing query: {e}", file=sys.stderr)
+        raise
 
 async def main():
+    # Get database URL from command line
+    if len(sys.argv) != 2:
+        print("Please provide a database URL as a command-line argument", file=sys.stderr)
+        sys.exit(1)
+
+    database_url = sys.argv[1]
+
+    # Initialize global connection
+    global conn
+    try:
+        conn = psycopg2.connect(database_url)
+    except Exception as e:
+        print(f"Error connecting to database: {e}", file=sys.stderr)
+        sys.exit(1)
+
     # Run the server using stdin/stdout streams
     async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="postgres-mcp",
-                server_version="0.1.0",
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
+        try:
+            await server.run(
+                read_stream,
+                write_stream,
+                InitializationOptions(
+                    server_name="postgres-mcp",
+                    server_version="0.1.0",
+                    capabilities=server.get_capabilities(
+                        notification_options=NotificationOptions(),
+                        experimental_capabilities={},
+                    ),
                 ),
-            ),
-        )
+            )
+        finally:
+            if conn:
+                conn.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
