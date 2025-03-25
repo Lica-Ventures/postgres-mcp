@@ -47,7 +47,8 @@ On Windows: `%APPDATA%/Claude/claude_desktop_config.json`
         "--directory",
         "{{PATH TO CHECKOUT}}/postgres-mcp",
         "run",
-        "postgres-mcp"
+        "postgres-mcp",
+        "{{POSTGRESQL DATABASE URL}}
       ]
     }
   }
