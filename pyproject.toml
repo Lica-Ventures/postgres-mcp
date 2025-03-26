@@ -1,0 +1,20 @@
+[project]
+name = "postgres-mcp"
+version = "0.1.0"
+description = "Postgres tuning tools"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "mcp[cli]>=1.5.0",
+    "psycopg2-binary>=2.9.9",
+]
+[[project.authors]]
+name = "Johann Schleier-Smith"
+email = "jssmith@crystal.cloud"
+
+[build-system]
+requires = [ "hatchling",]
+build-backend = "hatchling.build"
+
+[project.scripts]
+postgres-mcp = "postgres_mcp:main"
