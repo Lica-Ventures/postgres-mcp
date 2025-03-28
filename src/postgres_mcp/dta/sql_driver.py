@@ -10,15 +10,14 @@ from psycopg2.extras import RealDictCursor
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class RowResult:
-    """Simple class to match the Griptape RowResult interface."""
-
-    cells: Dict[str, Any]
-
-
 class SqlDriver:
     """Adapter class that wraps a PostgreSQL connection with the interface expected by DTA."""
+
+    @dataclass
+    class RowResult:
+        """Simple class to match the Griptape RowResult interface."""
+
+        cells: Dict[str, Any]
 
     def __init__(self, conn: Any = None, engine_url: str | None = None):
         """
@@ -46,13 +45,16 @@ class SqlDriver:
         """
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute(query)
-                if cursor.description is None:  # No results (like DDL statements)
-                    self.conn.commit()
-                    return None
-
-                rows = cursor.fetchall()
-                return [RowResult(cells=dict(row)) for row in rows]
+                # Start read-only transaction
+                cursor.execute("BEGIN TRANSACTION READ ONLY")
+                try:
+                    cursor.execute(query)
+                    if cursor.description is None:  # No results (like DDL statements)
+                        return None
+                    rows = cursor.fetchall()
+                    return [SqlDriver.RowResult(cells=dict(row)) for row in rows]
+                finally:
+                    cursor.execute("ROLLBACK")
         except Exception as e:
             logger.error(f"Error executing query: {e}")
             self.conn.rollback()

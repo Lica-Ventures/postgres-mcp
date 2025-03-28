@@ -12,6 +12,8 @@ from pydantic import AnyUrl
 import mcp.server.stdio
 
 from .dta.dta_tools import DTATool
+from .dta.safe_sql import SafeSqlDriver
+from .dta.sql_driver import SqlDriver
 
 server = Server("postgres-mcp")
 
@@ -173,15 +175,11 @@ async def handle_call_tool(
         sql = arguments["sql"]
 
         try:
-            with get_connection().cursor(cursor_factory=RealDictCursor) as cursor:
-                # Start read-only transaction
-                cursor.execute("BEGIN TRANSACTION READ ONLY")
-                try:
-                    cursor.execute(sql)
-                    rows = cursor.fetchall()
-                    return [types.TextContent(type="text", text=str(list(rows)))]
-                finally:
-                    cursor.execute("ROLLBACK")
+            sql_driver = SafeSqlDriver(sql_driver=SqlDriver(conn=get_connection()))
+            rows = sql_driver.execute_query(sql)
+            if rows is None:
+                return [types.TextContent(type="text", text="No results")]
+            return [types.TextContent(type="text", text=str(list([r.cells for r in rows])))]
         except Exception as e:
             print(f"Error executing query: {e}", file=sys.stderr)
             raise
@@ -192,7 +190,9 @@ async def handle_call_tool(
         )
 
         try:
-            dta_tool = DTATool(get_connection())
+            dta_tool = DTATool(
+                SafeSqlDriver(sql_driver=SqlDriver(conn=get_connection()))
+            )
             result = dta_tool.analyze_workload(max_index_size_mb=max_index_size_mb)
             return [types.TextContent(type="text", text=str(result))]
         except Exception as e:
@@ -207,7 +207,9 @@ async def handle_call_tool(
         max_index_size_mb = arguments.get("max_index_size_mb", 10000)
 
         try:
-            dta_tool = DTATool(get_connection())
+            dta_tool = DTATool(
+                SafeSqlDriver(sql_driver=SqlDriver(conn=get_connection()))
+            )
             result = dta_tool.analyze_queries(
                 queries=queries, max_index_size_mb=max_index_size_mb
             )
@@ -224,7 +226,9 @@ async def handle_call_tool(
         max_index_size_mb = arguments.get("max_index_size_mb", 10000)
 
         try:
-            dta_tool = DTATool(get_connection())
+            dta_tool = DTATool(
+                SafeSqlDriver(sql_driver=SqlDriver(conn=get_connection()))
+            )
             result = dta_tool.analyze_single_query(
                 query=query, max_index_size_mb=max_index_size_mb
             )
