@@ -17,6 +17,7 @@ from pglast.ast import A_Const
 from pglast.ast import A_Expr
 from pglast.ast import A_Star
 from pglast.ast import Alias
+from pglast.ast import VacuumStmt
 from pglast.ast import BitString
 from pglast.ast import Boolean
 from pglast.ast import BooleanTest
@@ -61,7 +62,8 @@ logger = logging.getLogger(__name__)
 
 
 class SafeSqlDriver(SqlDriver):
-    """A wrapper around any SqlDriver that only allows SELECT, EXPLAIN SELECT, and SHOW queries.
+    """A wrapper around any SqlDriver that only allows SELECT, ANALYZE, VACUUM, EXPLAIN SELECT, and
+    SHOW queries.
 
     Uses pglast to parse and validate SQL statements before execution.
     All other statement types (DDL, DML etc) are rejected.
@@ -78,6 +80,7 @@ class SafeSqlDriver(SqlDriver):
         ExplainStmt,  # EXPLAIN SELECT
         CreateExtensionStmt,  # CREATE EXTENSION
         VariableShowStmt,  # SHOW statements
+        VacuumStmt,  # VACUUM and ANALYZE statements
     }
 
     ALLOWED_FUNCTIONS: ClassVar[set[str]] = {
@@ -525,6 +528,8 @@ class SafeSqlDriver(SqlDriver):
         DefElem,
         # SHOW components
         VariableShowStmt,
+        # VACUUM and ANALYZE components
+        VacuumStmt,
         # Sorting/grouping
         SortBy,
         SortGroupClause,
@@ -657,12 +662,14 @@ class SafeSqlDriver(SqlDriver):
                         # Check if the inner statement type is allowed
                         if not isinstance(stmt.stmt, tuple(self.ALLOWED_STMT_TYPES)):
                             raise ValueError(
-                                "Only SELECT, EXPLAIN, and SHOW statements are allowed"
+                                "Only SELECT, ANALYZE, VACUUM, EXPLAIN, and SHOW statements are allowed. Received raw statement: "
+                                + str(stmt.stmt)
                             )
                     else:
                         if not isinstance(stmt, tuple(self.ALLOWED_STMT_TYPES)):
                             raise ValueError(
-                                "Only SELECT, EXPLAIN, and SHOW statements are allowed"
+                                "Only SELECT, ANALYZE, VACUUM, EXPLAIN, and SHOW statements are allowed. Received: "
+                                + str(stmt)
                             )
                     self._validate_node(stmt)
             except Exception as e:
