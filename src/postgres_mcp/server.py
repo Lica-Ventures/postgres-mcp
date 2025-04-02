@@ -6,12 +6,13 @@ from typing import Any, List
 
 from mcp.server.fastmcp import Context, FastMCP
 import mcp.types as types
+from pydantic import AnyUrl, Field
 import psycopg
 from .dta.sql_driver import DbConnPool, obfuscate_password, SqlDriver
-from pydantic import AnyUrl
 
 from .dta.dta_tools import DTATool
 from .dta.safe_sql import SafeSqlDriver
+from .database_health.database_health import DatabaseHealthTool, HealthType
 from .dta.dta_calc import MAX_NUM_DTA_QUERIES_LIMIT
 
 mcp = FastMCP("postgres-mcp")
@@ -145,7 +146,9 @@ async def table_schema_resource(table_name: str) -> str:
 
 
 @mcp.tool(description="Run a read-only SQL query")
-async def query(sql: str) -> ResponseType:
+async def query(
+    sql: str = Field(description="SQL to run", default="all"),
+) -> ResponseType:
     """Run a read-only SQL query."""
     try:
         sql_driver = await get_safe_sql_driver()
@@ -161,7 +164,9 @@ async def query(sql: str) -> ResponseType:
 @mcp.tool(
     description="Analyze frequently executed queries in the database and recommend optimal indexes"
 )
-async def analyze_workload(max_index_size_mb: int = 10000) -> ResponseType:
+async def analyze_workload(
+    max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
+) -> ResponseType:
     """Analyze frequently executed queries in the database and recommend optimal indexes."""
     try:
         sql_driver = await get_safe_sql_driver()
@@ -177,7 +182,8 @@ async def analyze_workload(max_index_size_mb: int = 10000) -> ResponseType:
     description="Analyze a list of (up to 10) SQL queries and recommend optimal indexes"
 )
 async def analyze_queries(
-    queries: list[str], max_index_size_mb: int = 10000
+    queries: list[str] = Field(description="List of Query strings to analyze"),
+    max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
 ) -> ResponseType:
     """Analyze a list of SQL queries and recommend optimal indexes."""
     if len(queries) == 0:
@@ -202,6 +208,28 @@ async def analyze_queries(
 
 
 @mcp.tool(
+    description="Analyzes database health for specified components including buffer cache hit rates, "
+    "identifies duplicate, unused, or invalid indexes, sequence health, constraint health "
+    "vacuum health, and connection health."
+)
+async def database_health(
+    health_type: str = Field(
+        description=f"Valid values are: {', '.join(sorted([t.value for t in HealthType]))}.",
+        default="all",
+    ),
+) -> ResponseType:
+    """Analyze database health for specified components.
+
+    Args:
+        health_type: Comma-separated list of health check types to perform.
+                    Valid values: index, connection, vacuum, sequence, replication, buffer, constraint, all
+    """
+    health_tool = DatabaseHealthTool(get_safe_sql_driver())
+    result = await health_tool.health(health_type=health_type)
+    return format_text_response(result)
+
+
+@mcp.tool(
     description="Lists all extensions currently installed in the PostgreSQL database."
 )
 async def list_installed_extensions(ctx: Context) -> ResponseType:
@@ -218,8 +246,13 @@ async def list_installed_extensions(ctx: Context) -> ResponseType:
 @mcp.tool(
     description="Installs a PostgreSQL extension if it's available but not already installed. Requires appropriate database privileges (often superuser)."
 )
-async def install_extension(extension_name: str) -> ResponseType:
-    """Installs a PostgreSQL extension if it's available but not already installed."""
+async def install_extension(
+    extension_name: str = Field(
+        description="Extension to install. e.g. pg_stat_statements"
+    ),
+) -> ResponseType:
+    """Installs a PostgreSQL extension if it's available but not already installed. Requires appropriate database privileges (often superuser)."""
+
     try:
         # First check if the extension exists in pg_available_extensions
         sql_driver = await get_safe_sql_driver()
@@ -248,7 +281,8 @@ async def install_extension(extension_name: str) -> ResponseType:
 
         # Attempt to create the extension
         await sql_driver.execute_query(
-            f"CREATE EXTENSION {extension_name};",  # type: ignore
+            f"CREATE EXTENSION {extension_name}",  # type: ignore
+            # NOTE: cannot escape because an escaped extension_name is invalid SQL
             force_readonly=False,
         )
 
@@ -276,7 +310,9 @@ async def install_extension(extension_name: str) -> ResponseType:
 @mcp.tool(
     description=f"Reports the slowest SQL queries based on total execution time, using data from the '{PG_STAT_STATEMENTS}' extension. If the extension is not installed, provides instructions on how to install it."
 )
-async def top_slow_queries(limit: int = 10) -> ResponseType:
+async def top_slow_queries(
+    limit: int = Field(description="Number of slow queries to return", default=10),
+) -> ResponseType:
     """Reports the slowest SQL queries based on total execution time."""
     try:
         sql_driver = await get_safe_sql_driver()
