@@ -1,6 +1,7 @@
 import json
 import pytest
 import pytest_asyncio
+import asyncio
 from logging import getLogger
 from typing import Any
 from typing import Dict
@@ -833,27 +834,27 @@ async def test_identify_parameter_column(create_dta):
 
     # Test equality pattern
     context = "SELECT * FROM users WHERE name = $1"
-    result = dta._identify_parameter_column(context, table_columns)  # type: ignore
+    result = dta._identify_parameter_column(context, table_columns)
     assert result == ("users", "name")
 
     # Test LIKE pattern
     context = "SELECT * FROM users WHERE email LIKE $1"
-    result = dta._identify_parameter_column(context, table_columns)  # type: ignore
+    result = dta._identify_parameter_column(context, table_columns)
     assert result == ("users", "email")
 
     # Test range pattern
     context = "SELECT * FROM orders WHERE amount > $1"
-    result = dta._identify_parameter_column(context, table_columns)  # type: ignore
+    result = dta._identify_parameter_column(context, table_columns)
     assert result == ("orders", "amount")
 
     # Test BETWEEN pattern
     context = "SELECT * FROM orders WHERE order_date BETWEEN $1 AND $2"
-    result = dta._identify_parameter_column(context, table_columns)  # type: ignore
+    result = dta._identify_parameter_column(context, table_columns)
     assert result == ("orders", "order_date")
 
     # Test no match
     context = "SELECT * FROM users WHERE $1"  # Invalid but should handle gracefully
-    result = dta._identify_parameter_column(context, table_columns)  # type: ignore
+    result = dta._identify_parameter_column(context, table_columns)
     assert result is None
 
 
@@ -868,7 +869,7 @@ async def test_get_replacement_value(create_dta):
         "common_vals": ["active", "pending", "completed"],
         "histogram_bounds": None,
     }
-    result = dta._get_replacement_value(stats, "status = $1")  # type: ignore
+    result = dta._get_replacement_value(stats, "status = $1")
     assert result == "'active'"
 
     # Numeric type with histogram bounds for range
@@ -877,12 +878,12 @@ async def test_get_replacement_value(create_dta):
         "common_vals": [10.0, 20.0],
         "histogram_bounds": [5.0, 15.0, 25.0, 50.0, 100.0],
     }
-    result = dta._get_replacement_value(stats, "amount > $1")  # type: ignore
+    result = dta._get_replacement_value(stats, "amount > $1")
     assert result == "25.0"
 
     # Date type
     stats = {"data_type": "date", "common_vals": None, "histogram_bounds": None}
-    result = dta._get_replacement_value(stats, "created_at < $1")  # type: ignore
+    result = dta._get_replacement_value(stats, "created_at < $1")
     assert result == "'2023-01-15'"
 
     # Boolean type
@@ -891,7 +892,7 @@ async def test_get_replacement_value(create_dta):
         "common_vals": [True, False],
         "histogram_bounds": None,
     }
-    result = dta._get_replacement_value(stats, "is_active = $1")  # type: ignore
+    result = dta._get_replacement_value(stats, "is_active = $1")
     assert result == "true"
 
 
@@ -1129,9 +1130,7 @@ async def test_enumerate_greedy_pareto_cost_benefit(async_sql_driver):
     dta._check_time = MagicMock(return_value=False)  # type: ignore
 
     # Mock the _estimate_index_size method to return a fixed size
-    dta._estimate_index_size = AsyncMock(
-        return_value=1024 * 1024
-    )  # 1MB per index   # type: ignore
+    dta._estimate_index_size = AsyncMock(return_value=1024 * 1024)  # type: ignore  # 1MB per index
 
     # Create test queries
     q1 = "SELECT * FROM test_table WHERE col1 = 1"
@@ -1199,10 +1198,10 @@ async def test_enumerate_greedy_pareto_cost_benefit(async_sql_driver):
             return [MockCell({"rel_size": base_relation_size})]
         return []
 
-    dta._evaluate_configuration_cost = AsyncMock(side_effect=mock_evaluate_cost)
-    dta._estimate_index_size = AsyncMock(side_effect=mock_index_size)
-    dta._estimate_table_size = AsyncMock(side_effect=mock_estimate_table_size)
-    dta.sql_driver.execute_query = AsyncMock(side_effect=mock_execute_query)
+    dta._evaluate_configuration_cost = AsyncMock(side_effect=mock_evaluate_cost)  # type: ignore
+    dta._estimate_index_size = AsyncMock(side_effect=mock_index_size)  # type: ignore
+    dta._estimate_table_size = AsyncMock(side_effect=mock_estimate_table_size)  # type: ignore
+    dta.sql_driver.execute_query = AsyncMock(side_effect=mock_execute_query)  # type: ignore
 
     # Set alpha parameter for cost/benefit analysis
     dta.pareto_alpha = 2.0
@@ -1213,7 +1212,7 @@ async def test_enumerate_greedy_pareto_cost_benefit(async_sql_driver):
     # Call _enumerate_greedy with cost/benefit analysis
     current_indexes = set()
     current_cost = base_cost
-    final_indexes, final_cost = await dta._enumerate_greedy(
+    final_indexes, final_cost = await dta._enumerate_greedy(  # type: ignore
         queries, current_indexes, current_cost, candidate_indexes.copy()
     )
 
@@ -1229,7 +1228,7 @@ async def test_enumerate_greedy_pareto_cost_benefit(async_sql_driver):
     (
         final_indexes_lower_threshold,
         final_cost_lower_threshold,
-    ) = await dta._enumerate_greedy(
+    ) = await dta._enumerate_greedy(  # type: ignore
         queries, current_indexes, current_cost, candidate_indexes.copy()
     )
 
@@ -1244,7 +1243,7 @@ async def test_enumerate_greedy_pareto_cost_benefit(async_sql_driver):
     (
         final_indexes_higher_threshold,
         final_cost_higher_threshold,
-    ) = await dta._enumerate_greedy(
+    ) = await dta._enumerate_greedy(  # type: ignore
         queries, current_indexes, current_cost, candidate_indexes.copy()
     )
 
@@ -1336,6 +1335,19 @@ def test_explain_plan_diff():
         {"NotAPlan": {}}, {"NotAPlan": {}}
     )
     assert "Cannot generate diff" in invalid_diff
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def cleanup_pools():
+    """Fixture to ensure all connection pools are properly closed after each test."""
+    # Setup - nothing to do here
+    yield
+
+    # Find and close any active connection pools
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    if tasks:
+        logger.debug(f"Waiting for {len(tasks)} tasks to complete...")
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 if __name__ == "__main__":

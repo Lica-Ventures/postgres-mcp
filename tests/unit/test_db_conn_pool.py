@@ -95,7 +95,7 @@ async def test_pool_connect_with_retry(mock_pool):
                 pool = await mock_pool_connect(db_pool)
 
                 assert pool == mock_pool
-                assert db_pool._is_valid is True
+                assert db_pool._is_valid is True  # type: ignore
                 mock_sleep.assert_not_called()  # We're not actually calling sleep in our mock
 
 
@@ -115,7 +115,7 @@ async def test_pool_connect_all_retries_fail(mock_pool):
             with pytest.raises(Exception):
                 await db_pool.pool_connect()
 
-            assert db_pool._is_valid is False
+            assert db_pool._is_valid is False  # type: ignore
             assert mock_pool.open.call_count >= 1
 
 
@@ -131,13 +131,13 @@ async def test_close_pool(mock_pool):
         db_pool.pool_connect = AsyncMock(return_value=mock_pool)
         await db_pool.pool_connect()
         db_pool.pool = mock_pool  # Set directly
-        db_pool._is_valid = True
+        db_pool._is_valid = True  # type: ignore
 
         # Close the pool
         await db_pool.close()
 
         # Check that pool is now invalid
-        assert db_pool._is_valid is False
+        assert db_pool._is_valid is False  # type: ignore
         assert db_pool.pool is None
         mock_pool.close.assert_called_once()
 
@@ -156,19 +156,19 @@ async def test_close_handles_errors(mock_pool):
         db_pool.pool_connect = AsyncMock(return_value=mock_pool)
         await db_pool.pool_connect()
         db_pool.pool = mock_pool  # Set directly
-        db_pool._is_valid = True
+        db_pool._is_valid = True  # type: ignore
 
         # Close should not raise the exception
         await db_pool.close()
 
         # Pool should still be marked as invalid
-        assert db_pool._is_valid is False
+        assert db_pool._is_valid is False  # type: ignore
         assert db_pool.pool is None
 
 
 @pytest.mark.asyncio
-async def test_get_pool_initialized(mock_pool):
-    """Test get_pool when pool is already initialized."""
+async def test_pool_connect_initialized(mock_pool):
+    """Test pool_connect when pool is already initialized."""
     with patch(
         "postgres_mcp.dta.sql_driver.AsyncConnectionPool", return_value=mock_pool
     ):
@@ -178,13 +178,13 @@ async def test_get_pool_initialized(mock_pool):
         db_pool.pool_connect = AsyncMock(return_value=mock_pool)
         original_pool = await db_pool.pool_connect()
         db_pool.pool = mock_pool  # Set directly
-        db_pool._is_valid = True
+        db_pool._is_valid = True  # type: ignore
 
         # Reset the mock counts
         mock_pool.open.reset_mock()
 
         # Get the pool again
-        returned_pool = await db_pool.get_pool()
+        returned_pool = await db_pool.pool_connect()
 
         # Should return the existing pool without reconnecting
         assert returned_pool == original_pool
@@ -192,8 +192,8 @@ async def test_get_pool_initialized(mock_pool):
 
 
 @pytest.mark.asyncio
-async def test_get_pool_not_initialized(mock_pool):
-    """Test get_pool when pool is not yet initialized."""
+async def test_pool_connect_not_initialized(mock_pool):
+    """Test pool_connect when pool is not yet initialized."""
     with patch(
         "postgres_mcp.dta.sql_driver.AsyncConnectionPool", return_value=mock_pool
     ):
@@ -203,7 +203,7 @@ async def test_get_pool_not_initialized(mock_pool):
         db_pool.pool_connect = AsyncMock(return_value=mock_pool)
 
         # Get pool without initializing first
-        pool = await db_pool.get_pool()
+        pool = await db_pool.pool_connect()
 
         # Verify pool connect was called
         db_pool.pool_connect.assert_called_once()

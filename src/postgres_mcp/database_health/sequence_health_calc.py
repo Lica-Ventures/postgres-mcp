@@ -110,7 +110,7 @@ class SequenceHealthCalc:
                     has_sequence_privilege('{}', 'SELECT') AS readable,
                     last_value
                 FROM {}
-            """,
+                """,
                 [Identifier(schema, sequence), Identifier(schema, sequence)],
             )
 

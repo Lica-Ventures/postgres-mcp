@@ -113,13 +113,6 @@ class DbConnPool:
             logger.error(f"Connection attempt failed: {obfuscate_password(str(e))}")
             raise
 
-    async def get_pool(self) -> Any:
-        """Get a connection from the pool, initializing the pool if needed."""
-        if not self.pool or not self._is_valid:
-            return await self.pool_connect()
-
-        return self.pool
-
     async def close(self) -> None:
         """Close the connection pool."""
         if self.pool:
@@ -176,12 +169,13 @@ class SqlDriver:
         else:
             raise ValueError("Either conn or engine_url must be provided")
 
-    async def connect(self):
+    def connect(self):
         if self.conn is not None:
-            return
+            return self.conn
         if self.engine_url:
             self.conn = DbConnPool(self.engine_url)
             self.is_pool = True
+            return self.conn
         else:
             raise ValueError(
                 "Connection not established. Either conn or engine_url must be provided"
@@ -206,14 +200,14 @@ class SqlDriver:
         """
         try:
             if self.conn is None:
-                await self.connect()
+                self.connect()
                 if self.conn is None:
                     raise ValueError("Connection not established")
 
             # Handle connection pool vs direct connection
             if self.is_pool:
                 # For pools, get a connection from the pool
-                pool = await self.conn.get_pool()
+                pool = await self.conn.pool_connect()
                 async with pool.connection() as connection:
                     return await self._execute_with_connection(
                         connection, query, params, force_readonly
@@ -226,8 +220,8 @@ class SqlDriver:
         except Exception as e:
             # Mark pool as invalid if there was a connection issue
             if self.conn and self.is_pool:
-                self.conn._is_valid = False
-                self.conn._last_error = str(e)
+                self.conn._is_valid = False  # type: ignore
+                self.conn._last_error = str(e)  # type: ignore
             elif self.conn and not self.is_pool:
                 self.conn = None
 
