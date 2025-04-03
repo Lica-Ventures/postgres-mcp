@@ -1,7 +1,7 @@
 import pytest
 
-from ..dta.sql_driver import SqlDriver
-from .database_health import DatabaseHealthTool
+from postgres_mcp.sql import SqlDriver
+from postgres_mcp.database_health import DatabaseHealthTool
 
 import logging
 
@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 @pytest.fixture
 def local_sql_driver(test_postgres_connection_string):
     connection_string, version = test_postgres_connection_string
+    logger.info(f"Using connection string: {connection_string}")
+    logger.info(f"Using version: {version}")
     return SqlDriver(engine_url=connection_string)
 
 
@@ -116,7 +118,6 @@ async def cleanup_test_tables(sql_driver):
         await conn_pool.close()
 
 
-@pytest.mark.postgres
 @pytest.mark.asyncio
 async def test_database_health_all(local_sql_driver):
     """Test that the database health tool runs without errors when performing all health checks.
