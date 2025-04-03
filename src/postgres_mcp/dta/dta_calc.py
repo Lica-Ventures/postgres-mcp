@@ -918,12 +918,10 @@ class DatabaseTuningAdvisor:
         # Try to get table size from the database using proper quoting
         try:
             # Use the proper way to calculate table size with quoted identifiers
-            query = "SELECT pg_total_relation_size(quote_ident('{}')) as rel_size"
+            query = "SELECT pg_total_relation_size(quote_ident({})) as rel_size"
             result = await SafeSqlDriver.execute_param_query(
                 self.sql_driver, query, [table]
             )
-            # query = f"SELECT pg_total_relation_size(quote_ident('{table}')) as rel_size"
-            # result = await self.sql_driver.execute_query(query)
 
             if result and len(result) > 0 and len(result[0].cells) > 0:
                 size = int(result[0].cells["rel_size"])
