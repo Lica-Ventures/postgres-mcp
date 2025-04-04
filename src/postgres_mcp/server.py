@@ -13,9 +13,11 @@ import psycopg
 from .sql import DbConnPool, obfuscate_password, SqlDriver
 
 from .dta import DTATool
-from .sql import SafeSqlDriver
+from .sql import SafeSqlDriver, check_hypopg_installation_status
 from .database_health import DatabaseHealthTool, HealthType
 from .dta import MAX_NUM_DTA_QUERIES_LIMIT
+from .explain import ExplainPlanTool
+from .explain import ExplainPlanArtifact, ErrorResult
 
 mcp = FastMCP("postgres-mcp")
 
@@ -160,6 +162,84 @@ async def table_schema_resource(table_name: str) -> str:
     except Exception as e:
         logger.error(f"Error getting table schema: {e}")
         raise
+
+
+@mcp.tool(
+    description="Explains the execution plan for a SQL query, showing how the database will execute it and provides detailed cost estimates."
+)
+async def explain_query(
+    sql: str = Field(description="SQL query to explain"),
+    analyze: bool = Field(
+        description="When True, actually runs the query to show real execution statistics instead of estimates. Takes longer but provides more accurate information.",
+        default=False,
+    ),
+    hypothetical_indexes: list[dict[str, Any]] | None = Field(
+        description="""Optional list of hypothetical indexes to simulate. Each index must be a dictionary with these keys:
+    - 'table': The table name to add the index to (e.g., 'users')
+    - 'columns': List of column names to include in the index (e.g., ['email'] or ['last_name', 'first_name'])
+    - 'using': Optional index method (default: 'btree', other options include 'hash', 'gist', etc.)
+
+Examples: [
+    {"table": "users", "columns": ["email"], "using": "btree"},
+    {"table": "orders", "columns": ["user_id", "created_at"]}
+]""",
+        default=None,
+    ),
+) -> ResponseType:
+    """
+    Explains the execution plan for a SQL query.
+
+    Args:
+        sql: The SQL query to explain
+        analyze: When True, actually runs the query for real statistics
+        hypothetical_indexes: Optional list of indexes to simulate
+    """
+    try:
+        sql_driver = await get_sql_driver()
+        explain_tool = ExplainPlanTool(sql_driver=sql_driver)
+        result: ExplainPlanArtifact | ErrorResult | None = None
+
+        # If hypothetical indexes are specified, check for HypoPG extension
+        if hypothetical_indexes:
+            try:
+                # Use the common utility function to check if hypopg is installed
+                (
+                    is_hypopg_installed,
+                    hypopg_message,
+                ) = await check_hypopg_installation_status(sql_driver)
+
+                # If hypopg is not installed, return the message
+                if not is_hypopg_installed:
+                    return format_text_response(hypopg_message)
+
+                # HypoPG is installed, proceed with explaining with hypothetical indexes
+                result = await explain_tool.explain_with_hypothetical_indexes(
+                    sql, hypothetical_indexes
+                )
+            except Exception:
+                raise  # Re-raise the original exception
+        elif analyze:
+            try:
+                # Use EXPLAIN ANALYZE
+                result = await explain_tool.explain_analyze(sql)
+            except Exception:
+                raise  # Re-raise the original exception
+        else:
+            try:
+                # Use basic EXPLAIN
+                result = await explain_tool.explain(sql)
+            except Exception:
+                raise  # Re-raise the original exception
+
+        if result and isinstance(result, ExplainPlanArtifact):
+            return format_text_response(result.to_text())
+        else:
+            return format_error_response(
+                "Error processing explain plan: " + result.to_text()
+            )
+    except Exception as e:
+        logger.error(f"Error explaining query: {e}")
+        return format_error_response(str(e))
 
 
 @mcp.tool(description="Run a read-only SQL query")
