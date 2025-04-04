@@ -1,19 +1,21 @@
 """SQL utilities."""
 
-from .sql_driver import SqlDriver, DbConnPool, obfuscate_password
+from .extension_utils import check_extension
+from .extension_utils import check_hypopg_installation_status
+from .extension_utils import check_postgres_version_requirement
+from .extension_utils import get_postgres_version
 from .safe_sql import SafeSqlDriver
-from .extension_utils import (
-    check_extension,
-    check_hypopg_installation_status,
-    ExtensionStatus,
-)
+from .sql_driver import DbConnPool
+from .sql_driver import SqlDriver
+from .sql_driver import obfuscate_password
 
 __all__ = [
-    "SqlDriver",
     "DbConnPool",
-    "obfuscate_password",
     "SafeSqlDriver",
+    "SqlDriver",
     "check_extension",
     "check_hypopg_installation_status",
-    "ExtensionStatus",
+    "check_postgres_version_requirement",
+    "get_postgres_version",
+    "obfuscate_password",
 ]
