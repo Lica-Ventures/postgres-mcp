@@ -610,7 +610,7 @@ async def main():
     if current_access_mode == AccessMode.UNRESTRICTED:
         mcp.add_tool(execute_sql, description="Execute any SQL query")
     else:
-        mcp.add_tool(execute_sql, description="Run a read-only SQL query")
+        mcp.add_tool(execute_sql, description="Execute a read-only SQL query")
 
     logger.info(f"Starting PostgreSQL MCP Server in {current_access_mode.upper()} mode")
 
