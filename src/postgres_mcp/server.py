@@ -25,6 +25,7 @@ from .sql import SafeSqlDriver
 from .sql import SqlDriver
 from .sql import check_hypopg_installation_status
 from .sql import obfuscate_password
+from .top_queries import TopQueriesCalc
 
 mcp = FastMCP("postgres-mcp")
 
@@ -458,54 +459,27 @@ async def analyze_db_health(
     return format_text_response(result)
 
 
-@mcp.tool(description=f"Reports the slowest SQL queries based on total execution time, using data from the '{PG_STAT_STATEMENTS}' extension.")
+@mcp.tool(description=f"Reports the slowest SQL queries based on execution time, using data from the '{PG_STAT_STATEMENTS}' extension.")
 async def get_top_queries(
     limit: int = Field(description="Number of slow queries to return", default=10),
+    sort_by: str = Field(
+        description="Sort criteria: 'total' for total execution time or 'mean' for mean execution time per call",
+        default="mean",
+    ),
 ) -> ResponseType:
-    """Reports the slowest SQL queries based on total execution time."""
+    """Reports the slowest SQL queries based on execution time.
+
+    This tool handles PostgreSQL version differences automatically:
+    - In PostgreSQL 13+: Uses total_exec_time/mean_exec_time columns
+    - In PostgreSQL 12 and older: Uses total_time/mean_time columns
+    """
     try:
         sql_driver = await get_sql_driver()
-
-        rows = await SafeSqlDriver.execute_param_query(
-            sql_driver,
-            "SELECT 1 FROM pg_extension WHERE extname = {}",
-            [PG_STAT_STATEMENTS],
-        )
-        extension_exists = len(rows) > 0 if rows else False
-
-        if extension_exists:
-            query = """
-                SELECT
-                    query,
-                    calls,
-                    total_exec_time,
-                    mean_exec_time,
-                    rows
-                FROM pg_stat_statements
-                ORDER BY total_exec_time DESC
-                LIMIT {};
-            """
-            slow_query_rows = await SafeSqlDriver.execute_param_query(
-                sql_driver,
-                query,
-                [limit],
-            )
-            slow_queries = [row.cells for row in slow_query_rows] if slow_query_rows else []
-            result_text = f"Top {len(slow_queries)} slowest queries by total execution time:\n"
-            result_text += str(slow_queries)
-            return format_text_response(result_text)
-        else:
-            message = (
-                f"The '{PG_STAT_STATEMENTS}' extension is required to report slow queries, but it is not currently installed.\n\n"
-                f"You can ask me to install 'pg_stat_statements' using the 'execute_sql' tool.\n\n"
-                f"**Is it safe?** Installing '{PG_STAT_STATEMENTS}' is generally safe and a standard practice for performance monitoring. "
-                f"It adds performance overhead by tracking statistics, but this is usually negligible unless your server is under extreme load. "
-                f"It requires database privileges (often superuser) to install.\n\n"
-                f"**What does it do?** It records statistics (like execution time, number of calls, rows returned) "
-                f"for every query executed against the database.\n\n"
-                f"**How to undo?** If you later decide to remove it, you can ask me to run 'DROP EXTENSION {PG_STAT_STATEMENTS};'."
-            )
-            return format_text_response(message)
+        top_queries_tool = TopQueriesCalc(sql_driver=sql_driver)
+        if sort_by != "mean" and sort_by != "total":
+            return format_error_response("Invalid sort criteria. Please use 'mean' or 'total'.")
+        result = await top_queries_tool.get_top_queries(limit=limit, sort_by=sort_by)
+        return format_text_response(result)
     except Exception as e:
         logger.error(f"Error getting slow queries: {e}")
         return format_error_response(str(e))
