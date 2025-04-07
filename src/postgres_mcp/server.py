@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
 from enum import Enum
@@ -488,7 +489,7 @@ async def get_top_queries(
 async def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="PostgreSQL MCP Server")
-    parser.add_argument("database_url", help="Database connection URL")
+    parser.add_argument("database_url", help="Database connection URL", nargs="?")
     parser.add_argument(
         "--access-mode",
         type=str,
@@ -511,7 +512,13 @@ async def main():
 
     logger.info(f"Starting PostgreSQL MCP Server in {current_access_mode.upper()} mode")
 
-    database_url = args.database_url
+    # Get database URL from environment variable or command line
+    database_url = os.environ.get("DATABASE_URI", args.database_url)
+
+    if not database_url:
+        raise ValueError(
+            "Error: No database URL provided. Please specify via 'DATABASE_URI' environment variable or command-line argument.",
+        )
 
     # Initialize database connection pool
     try:
