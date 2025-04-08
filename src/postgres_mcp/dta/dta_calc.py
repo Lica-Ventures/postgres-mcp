@@ -306,7 +306,7 @@ class DatabaseTuningAdvisor:
 
         except Exception as e:
             logger.error(f"Error in workload analysis: {e}", exc_info=True)
-            session.error = str(e)
+            session.error = f"Error in workload analysis: {e}"
 
         session.dta_traces = self._dta_traces
         return session
@@ -546,10 +546,7 @@ class DatabaseTuningAdvisor:
                     total_cost += cost * weight
                     valid_queries += 1
                 except Exception as e:
-                    logger.error(
-                        f"Error executing explain for query: {query_text} with error: {e}",
-                        exc_info=True,
-                    )
+                    raise ValueError(f"Error executing explain for query: {query_text}") from e
 
             if valid_queries == 0:
                 self.dta_trace("    + no valid queries found for cost evaluation")
@@ -561,9 +558,8 @@ class DatabaseTuningAdvisor:
             return avg_cost
 
         except Exception as e:
-            logger.error(f"Error evaluating configuration: {e}", exc_info=True)
             self.dta_trace(f"    + error evaluating configuration: {e}")
-            return float("inf")
+            raise ValueError("Error evaluating configuration") from e
 
     async def _enumerate_greedy(
         self,
@@ -819,8 +815,7 @@ class DatabaseTuningAdvisor:
 
             return queries
         except Exception as e:
-            logger.error(f"Error loading queries from file {file_path}: {e}", exc_info=True)
-            return []
+            raise ValueError(f"Error loading queries from file {file_path}") from e
 
     async def _get_query_stats(self, min_calls: int, min_avg_time_ms: float, limit: int) -> list[dict[str, Any]]:
         """Get query statistics from pg_stat_statements"""
@@ -904,19 +899,11 @@ class DatabaseTuningAdvisor:
                     if existing_info and self._is_same_index(candidate_info, existing_info):
                         return True
                 except Exception as e:
-                    self.dta_trace(f"Error parsing existing index: {e}")
-                    # If parsing fails, try substring matching as fallback
-                    if index.table.lower() in existing_def.lower() and all(col.lower() in existing_def.lower() for col in index.columns):
-                        return True
+                    raise ValueError("Error parsing existing index") from e
 
             return False
         except Exception as e:
-            logger.warning(f"Error in robust index comparison: {e}")
-            # Fallback to simpler heuristic if parsing fails
-            return any(
-                index.table.lower() in existing_def.lower() and all(col.lower() in existing_def.lower() for col in index.columns)
-                for existing_def in existing_defs
-            )
+            raise ValueError("Error in robust index comparison") from e
 
     def _extract_index_info(self, node) -> dict[str, Any] | None:
         """Extract key information from a parsed index node."""
@@ -937,11 +924,14 @@ class DatabaseTuningAdvisor:
             # Extract columns
             columns = []
             for idx_elem in index_stmt.indexParams:
-                if hasattr(idx_elem, "name"):
+                if hasattr(idx_elem, "name") and idx_elem.name:
                     columns.append(idx_elem.name)
-                elif hasattr(idx_elem, "IndexElem"):
+                elif hasattr(idx_elem, "IndexElem") and idx_elem.IndexElem:
                     columns.append(idx_elem.IndexElem.name)
-
+                elif hasattr(idx_elem, "expr") and idx_elem.expr:
+                    # Convert the expression to a proper string representation
+                    expr_str = self._ast_expr_to_string(idx_elem.expr)
+                    columns.append(expr_str)
             # Extract index type
             index_type = "btree"  # default
             if hasattr(index_stmt, "accessMethod") and index_stmt.accessMethod:
@@ -960,7 +950,53 @@ class DatabaseTuningAdvisor:
             }
         except Exception as e:
             self.dta_trace(f"Error extracting index info: {e}")
-            return None
+            raise ValueError("Error extracting index info") from e
+
+    def _ast_expr_to_string(self, expr) -> str:
+        """Convert an AST expression (like FuncCall) to a proper string representation.
+
+        For example, converts a FuncCall node representing lower(name) to "lower(name)"
+        """
+        try:
+            # Import FuncCall and ColumnRef for type checking
+            from pglast.ast import ColumnRef
+            from pglast.ast import FuncCall
+
+            # Check for FuncCall type directly
+            if isinstance(expr, FuncCall):
+                # Extract function name
+                if hasattr(expr, "funcname") and expr.funcname:
+                    func_name = ".".join([name.sval for name in expr.funcname if hasattr(name, "sval")])
+                else:
+                    func_name = "unknown_func"
+
+                # Extract arguments
+                args = []
+                if hasattr(expr, "args") and expr.args:
+                    for arg in expr.args:
+                        args.append(self._ast_expr_to_string(arg))
+
+                # Format as function call
+                return f"{func_name}({','.join(args)})"
+
+            # Check for ColumnRef type directly
+            elif isinstance(expr, ColumnRef):
+                if hasattr(expr, "fields") and expr.fields:
+                    return ".".join([field.sval for field in expr.fields if hasattr(field, "sval")])
+                return "unknown_column"
+
+            # Try to handle direct values
+            elif hasattr(expr, "sval"):  # String value
+                return expr.sval
+            elif hasattr(expr, "ival"):  # Integer value
+                return str(expr.ival)
+            elif hasattr(expr, "fval"):  # Float value
+                return expr.fval
+
+            # Fallback for other expression types
+            return str(expr)
+        except Exception as e:
+            raise ValueError("Error converting expression to string") from e
 
     def _is_same_index(self, index1: dict[str, Any], index2: dict[str, Any]) -> bool:
         """Check if two indexes are functionally equivalent."""
@@ -1011,8 +1047,7 @@ class DatabaseTuningAdvisor:
 
             return float(total_cost)
         except (IndexError, KeyError, ValueError, json.JSONDecodeError) as e:
-            logger.error(f"Error extracting cost from plan: {e}", exc_info=True)
-            return float("inf")
+            raise ValueError("Error extracting cost from plan") from e
 
     async def _get_existing_indexes(self) -> list[dict[str, Any]]:
         """Get existing indexes"""
@@ -1059,8 +1094,7 @@ class DatabaseTuningAdvisor:
                 return size_estimate
             return 0
         except Exception as e:
-            logger.error(f"Error estimating index size: {e}", exc_info=True)
-            return 0
+            raise ValueError("Error estimating index size") from e
 
     def _estimate_index_size_internal(self, stats: dict[str, Any]) -> int:
         width = (stats["total_width"] or 0) + 8  # 8 bytes for the heap TID
@@ -1092,7 +1126,7 @@ class DatabaseTuningAdvisor:
                     condition_columns[table].update(cols)
 
             except Exception as e:
-                logger.warning(f"Error extracting condition columns from query: {e}")
+                raise ValueError("Error extracting condition columns from query") from e
 
         # Filter candidates - keep only those where all columns are in condition_columns
         filtered_candidates = []
