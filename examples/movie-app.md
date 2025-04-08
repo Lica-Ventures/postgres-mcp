@@ -10,16 +10,18 @@ We'll use the [IMDB dataset](https://developer.imdb.com/non-commercial-datasets/
 - **Postgres Pro** - to give Cursor a Postgres expert
 
 **What we did:**
-1) Create the initial app on Replit
-2) Fix query performance
-3) Fix empty movie details pages
-4) Improve the sort for top-rated movies
+1) Create the initial app on Replit - it's slow!
+2) Fixed performance - including ORM queries, indexing, and caching
+3) Fixed an empty movie details pages
+4) Improved the sort for top-rated movies
 
 **Full Video**
 
 *(play-by-play walkthrough is below)*
 
-https://github.com/user-attachments/assets/75af8664-3137-4e22-a877-9de78afe43b7
+https://github.com/user-attachments/assets/24e05745-65e9-4998-b877-a368f1eadc13
+
+---
 
 **Let's get started...**
 
@@ -37,7 +39,7 @@ https://github.com/user-attachments/assets/75af8664-3137-4e22-a877-9de78afe43b7
         <p><b>But it's slooooow...</b></br>
         The AI agent created a bunch of ORM code and what looked like reasonable indexes, but clearly it got it wrong.</p>
     </td>
-      <td align="center"><a href="https://youtu.be/BYkfytHkoZ0"><img src="https://github.com/user-attachments/assets/2609dfcb-2ff3-45b9-89f1-6d991e65c461"/></a></td>
+      <td align="center"><a href="https://youtu.be/v09nxLF3QKI"><img src="https://github.com/user-attachments/assets/2609dfcb-2ff3-45b9-89f1-6d991e65c461"/></a></td>
     </tr>
     <tr>
       <td align="left" valign="top">
@@ -68,7 +70,7 @@ https://github.com/user-attachments/assets/75af8664-3137-4e22-a877-9de78afe43b7
           <li>External API calls will be reduced by ~90%</li>
         </ul>
       </td>
-      <td align="center"><a href="https://youtu.be/BYkfytHkoZ0?si=6pue4Q0iAv9L4qER&t=75"><img src="https://github.com/user-attachments/assets/3e9cdd1d-e93e-4e4a-a043-ffdc6f4feea6"/></a></td>
+      <td align="center"><a href="https://youtu.be/v09nxLF3QKI?t=42"><img src="https://github.com/user-attachments/assets/3e9cdd1d-e93e-4e4a-a043-ffdc6f4feea6"/></a></td>
     </tr>
     <tr>
       <td align="left" valign="top">
@@ -87,12 +89,13 @@ https://github.com/user-attachments/assets/75af8664-3137-4e22-a877-9de78afe43b7
           <li>It identified additional data in <code>title_basics</code>
           to create a new About section with genre, runtime, and release years.</li>
         </ol>
-        <blockquote>Let's ask: Am I missing any data?</blockquote>
+        Let's ask:
+        <blockquote>Am I missing any data?</blockquote>
         <p>The AI Agent runs the sql queries and figures out we are indeed missing the cast/crew data.  It writes a script to import it in a more reliable way.</p>
         <div><em>(it turned out my original script aborted on errors)</em></p>
       </td>
       <td align="center">
-        <a href="https://youtu.be/BYkfytHkoZ0?si=Fptx4qdd2duJKA0i&t=222"><img src="https://github.com/user-attachments/assets/a5727fd5-3845-4110-998d-5af4f386ce0e"/></a>
+        <a href="https://youtu.be/v09nxLF3QKI?t=184"><img src="https://github.com/user-attachments/assets/a5727fd5-3845-4110-998d-5af4f386ce0e"/></a>
       </td>
     </tr>
     <tr>
@@ -112,12 +115,16 @@ https://github.com/user-attachments/assets/75af8664-3137-4e22-a877-9de78afe43b7
         <div>The AI Agent gets the distribution of data and some sample results to determine that a 10K vote minimum would give the best results.  It's great seeing the results are grounded in reality and not just some hallucination.</div>
       </td>
       <td align="center">
-        <a href="https://youtu.be/BYkfytHkoZ0?si=OwGJYXwcOunRkLH9&t=368"><img src="https://github.com/user-attachments/assets/05af6f5d-326c-4976-8719-20d4dcb6712c"/></a>
+        <a href="https://youtu.be/v09nxLF3QKI?t=327"><img src="https://github.com/user-attachments/assets/05af6f5d-326c-4976-8719-20d4dcb6712c"/></a>
       </td>
     </tr>
   </tbody>
 </table>
 
-## Ready to install?
+## Want to learn more?
 
-Jump to the [Quick Start](README.md#Quick-Start) instructions
+- [Overview](../README.md#overview)
+- [Features](../README.md#features)
+- [Quick Start](../README.md#quick-start)
+- [Technical Notes](../README.md#technical-notes)
+- [Discord Server](https://discord.gg/4BEHC7ZM)
