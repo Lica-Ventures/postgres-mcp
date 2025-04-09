@@ -3,6 +3,7 @@
 <img src="assets/postgres-pro.png" alt="Postgres Pro Logo" width="600"/>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![PyPI - Version](https://img.shields.io/pypi/v/postgres-mcp)](https://pypi.org/project/postgres-mcp/)
 [![Discord](https://img.shields.io/discord/1336769798603931789?label=Discord)](https://discord.gg/4BEHC7ZM)
 [![Twitter Follow](https://img.shields.io/twitter/follow/auto_dba?style=flat)](https://x.com/auto_dba)
 [![Contributors](https://img.shields.io/github/contributors/crystaldba/postgres-mcp)](https://github.com/crystaldba/postgres-mcp/graphs/contributors)
@@ -23,16 +24,16 @@
 
 ## Overview
 
-*Postgres Pro* is an open source Model Context Protocol (MCP) server built to support you and your AI agents throughout the entire development process—from initial coding, through testing and deployment, and to production tuning and maintenance.
+**Postgres Pro** is an open source Model Context Protocol (MCP) server built to support you and your AI agents throughout the **entire development process**—from initial coding, through testing and deployment, and to production tuning and maintenance.
 
 Postgres Pro does much more than wrap a database connection.
 For example, it provides:
-- Index tuning based on modern industrial-strength algorithms similar to those found in commercial databases.
-  It efficiently explores thousands of possible indexes to find the best solution for your workload.
-- Support for LLM-led indexing by providing "what if?" scenario analysis based on production data distributions and query patterns.
-- Standardized checklists for analyzing database health, ensuring trustworthy and repeatable results.
+- 🚀 **Industrial-stength index tuning** it efficiently explores thousands of possible indexes to find the best solution for your workload, using algorithms similar to those found in commercial databases.
+- 🤖 **"What if?" scenario analysis** allowing AI agents to simulate changes based on production data distributions and query patterns.
+- 🔍 **Production Health Diagnostics** providing standardized, comprehensive health checks to identify potential issues before they impact performance
+- 🛡️ **Safe SQL Execution** - implements restricted execution, ensuring read-only and resource-limited execution to protect production databases
 
-Postgres Pro also provides comprehensive schema information to support SQL generation, restricted and filtered SQL execution for safety, and more.
+Postgres Pro also provides comprehensive schema information to support SQL generation, explain plans, and more.
 
 ## Demo
 
