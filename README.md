@@ -1,6 +1,25 @@
-# Postgres Pro MCP Server
+<div align="center">
 
-[ [Quick Start](#quick-start) | [Discord Server](https://discord.gg/4BEHC7ZM) ]
+<img src="assets/postgres-pro.png" alt="Postgres Pro Logo" width="600"/>
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Discord](https://img.shields.io/discord/1336769798603931789?label=Discord)](https://discord.gg/4BEHC7ZM)
+[![Twitter Follow](https://img.shields.io/twitter/follow/auto_dba?style=flat)](https://x.com/auto_dba)
+[![Contributors](https://img.shields.io/github/contributors/crystaldba/postgres-mcp)](https://github.com/crystaldba/postgres-mcp/graphs/contributors)
+
+<h3>A Postgres MCP server with index tuning, explain plans, health checks, and safe sql execution</h3>
+
+<div class="toc">
+  <a href="#overview">Overview</a> •
+  <a href="#demo">Demo</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#features">Features</a> •
+  <a href="#technical-notes">Technical Notes</a> •
+  <a href="#mcp-server-api">MCP API</a> •
+  <a href="#related-projects">Related Projects</a>
+</div>
+
+</div>
 
 ## Overview
 
@@ -31,20 +50,6 @@ https://github.com/user-attachments/assets/24e05745-65e9-4998-b877-a368f1eadc13
 
 - Watch video above
 - [Read the play-by-play](examples/movie-app.md)
-
-
-## Contents
-
-- [Overview](#overview)
-- [Demo](#demo)
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Usage Examples](#usage-examples)
-- [MCP Server API](#mcp-server-api)
-- [Related Projects](#related-projects)
-- [Frequently Asked Questions](#frequently-asked-questions)
-- [Technical Notes](#technical-notes)
-- [Postgres Pro Development](#postgres-pro-development)
 
 
 ## Features
