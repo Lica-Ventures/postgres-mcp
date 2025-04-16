@@ -122,10 +122,10 @@ async def test_get_top_queries_integration(local_sql_driver):
         calc = TopQueriesCalc(sql_driver=local_sql_driver)
 
         # Get top queries by total execution time
-        total_result = await calc.get_top_queries(limit=10, sort_by="total")
+        total_result = await calc.get_top_queries_by_time(limit=10, sort_by="total")
 
         # Get top queries by mean execution time
-        mean_result = await calc.get_top_queries(limit=10, sort_by="mean")
+        mean_result = await calc.get_top_queries_by_time(limit=10, sort_by="mean")
 
         # Basic verification
         assert "slowest queries by total execution time" in total_result
@@ -157,23 +157,24 @@ async def test_extension_not_available(local_sql_driver):
     with pytest.MonkeyPatch().context() as mp:
         # Import the module we'll be monkeypatching
         import postgres_mcp.sql.extension_utils
+        from postgres_mcp.sql.extension_utils import ExtensionStatus
 
         # Define our mock function with the correct type signature
         async def mock_check(*args, **kwargs):
-            return {
-                "is_installed": False,
-                "is_available": True,
-                "name": PG_STAT_STATEMENTS,
-                "message": "Extension not installed",
-                "default_version": None,
-            }
+            return ExtensionStatus(
+                is_installed=False,
+                is_available=True,
+                name=PG_STAT_STATEMENTS,
+                message="Extension not installed",
+                default_version=None,
+            )
 
         # Replace the function with our mock
         # We need to patch the actual function imported by TopQueriesCalc
         mp.setattr(postgres_mcp.top_queries.top_queries_calc, "check_extension", mock_check)
 
         # Run the test
-        result = await calc.get_top_queries()
+        result = await calc.get_top_queries_by_time()
 
         # Check that we get installation instructions
         assert "not currently installed" in result

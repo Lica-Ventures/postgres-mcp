@@ -6,6 +6,7 @@ import pytest
 
 import postgres_mcp.top_queries.top_queries_calc as top_queries_module
 from postgres_mcp.sql import SqlDriver
+from postgres_mcp.sql.extension_utils import ExtensionStatus
 from postgres_mcp.top_queries import TopQueriesCalc
 
 
@@ -84,13 +85,13 @@ def mock_pg13_driver():
 def mock_extension_installed():
     """Mock check_extension to report extension is installed."""
     with patch.object(top_queries_module, "check_extension", autospec=True) as mock_check:
-        mock_check.return_value = {
-            "is_installed": True,
-            "is_available": True,
-            "name": "pg_stat_statements",
-            "message": "Extension is installed",
-            "default_version": "1.0",
-        }
+        mock_check.return_value = ExtensionStatus(
+            is_installed=True,
+            is_available=True,
+            name="pg_stat_statements",
+            message="Extension is installed",
+            default_version="1.0",
+        )
         yield mock_check
 
 
@@ -98,13 +99,13 @@ def mock_extension_installed():
 def mock_extension_not_installed():
     """Mock check_extension to report extension is not installed."""
     with patch.object(top_queries_module, "check_extension", autospec=True) as mock_check:
-        mock_check.return_value = {
-            "is_installed": False,
-            "is_available": True,
-            "name": "pg_stat_statements",
-            "message": "Extension not installed",
-            "default_version": None,
-        }
+        mock_check.return_value = ExtensionStatus(
+            is_installed=False,
+            is_available=True,
+            name="pg_stat_statements",
+            message="Extension not installed",
+            default_version=None,
+        )
         yield mock_check
 
 
@@ -115,7 +116,7 @@ async def test_top_queries_pg12_total_sort(mock_pg12_driver, mock_extension_inst
     calc = TopQueriesCalc(sql_driver=mock_pg12_driver)
 
     # Get top queries sorted by total time
-    result = await calc.get_top_queries(limit=3, sort_by="total")
+    result = await calc.get_top_queries_by_time(limit=3, sort_by="total")
 
     # Check that the result contains the expected information
     assert "Top 3 slowest queries by total execution time" in result
@@ -133,7 +134,7 @@ async def test_top_queries_pg12_mean_sort(mock_pg12_driver, mock_extension_insta
     calc = TopQueriesCalc(sql_driver=mock_pg12_driver)
 
     # Get top queries sorted by mean time
-    result = await calc.get_top_queries(limit=3, sort_by="mean")
+    result = await calc.get_top_queries_by_time(limit=3, sort_by="mean")
 
     # Check that the result contains the expected information
     assert "Top 3 slowest queries by mean execution time per call" in result
@@ -151,7 +152,7 @@ async def test_top_queries_pg13_total_sort(mock_pg13_driver, mock_extension_inst
     calc = TopQueriesCalc(sql_driver=mock_pg13_driver)
 
     # Get top queries sorted by total time
-    result = await calc.get_top_queries(limit=3, sort_by="total")
+    result = await calc.get_top_queries_by_time(limit=3, sort_by="total")
 
     # Check that the result contains the expected information
     assert "Top 3 slowest queries by total execution time" in result
@@ -169,7 +170,7 @@ async def test_top_queries_pg13_mean_sort(mock_pg13_driver, mock_extension_insta
     calc = TopQueriesCalc(sql_driver=mock_pg13_driver)
 
     # Get top queries sorted by mean time
-    result = await calc.get_top_queries(limit=3, sort_by="mean")
+    result = await calc.get_top_queries_by_time(limit=3, sort_by="mean")
 
     # Check that the result contains the expected information
     assert "Top 3 slowest queries by mean execution time per call" in result
@@ -187,7 +188,7 @@ async def test_extension_not_installed(mock_pg13_driver, mock_extension_not_inst
     calc = TopQueriesCalc(sql_driver=mock_pg13_driver)
 
     # Try to get top queries when extension is not installed
-    result = await calc.get_top_queries(limit=3)
+    result = await calc.get_top_queries_by_time(limit=3)
 
     # Check that the result contains the installation instructions
     assert "extension is required to report" in result
@@ -207,7 +208,7 @@ async def test_error_handling(mock_pg13_driver, mock_extension_installed):
     calc = TopQueriesCalc(sql_driver=mock_pg13_driver)
 
     # Try to get top queries
-    result = await calc.get_top_queries(limit=3)
+    result = await calc.get_top_queries_by_time(limit=3)
 
     # Check that the error is properly reported
     assert "Error getting slow queries: Database error" in result
