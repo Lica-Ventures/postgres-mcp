@@ -4,22 +4,28 @@ import asyncio
 import logging
 import os
 import signal
+import sys
 from enum import Enum
 from typing import Any
 from typing import List
+from typing import Literal
 from typing import Union
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
+from pydantic import validate_call
+
+from postgres_mcp.index.dta_calc import DatabaseTuningAdvisor
 
 from .artifacts import ErrorResult
 from .artifacts import ExplainPlanArtifact
 from .database_health import DatabaseHealthTool
 from .database_health import HealthType
-from .dta import MAX_NUM_DTA_QUERIES_LIMIT
-from .dta import DTATool
 from .explain import ExplainPlanTool
+from .index.index_opt_base import MAX_NUM_INDEX_TUNING_QUERIES
+from .index.llm_opt import LLMOptimizerTool
+from .index.presentation import TextPresentation
 from .sql import DbConnPool
 from .sql import SafeSqlDriver
 from .sql import SqlDriver
@@ -397,13 +403,19 @@ async def execute_sql(
 
 
 @mcp.tool(description="Analyze frequently executed queries in the database and recommend optimal indexes")
+@validate_call
 async def analyze_workload_indexes(
     max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
+    method: Literal["dta", "llm"] = Field(description="Method to use for analysis", default="dta"),
 ) -> ResponseType:
     """Analyze frequently executed queries in the database and recommend optimal indexes."""
     try:
         sql_driver = await get_sql_driver()
-        dta_tool = DTATool(sql_driver)
+        if method == "dta":
+            index_tuning = DatabaseTuningAdvisor(sql_driver)
+        else:
+            index_tuning = LLMOptimizerTool(sql_driver)
+        dta_tool = TextPresentation(sql_driver, index_tuning)
         result = await dta_tool.analyze_workload(max_index_size_mb=max_index_size_mb)
         return format_text_response(result)
     except Exception as e:
@@ -412,19 +424,25 @@ async def analyze_workload_indexes(
 
 
 @mcp.tool(description="Analyze a list of (up to 10) SQL queries and recommend optimal indexes")
+@validate_call
 async def analyze_query_indexes(
     queries: list[str] = Field(description="List of Query strings to analyze"),
     max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
+    method: Literal["dta", "llm"] = Field(description="Method to use for analysis", default="dta"),
 ) -> ResponseType:
     """Analyze a list of SQL queries and recommend optimal indexes."""
     if len(queries) == 0:
         return format_error_response("Please provide a non-empty list of queries to analyze.")
-    if len(queries) > MAX_NUM_DTA_QUERIES_LIMIT:
-        return format_error_response(f"Please provide a list of up to {MAX_NUM_DTA_QUERIES_LIMIT} queries to analyze.")
+    if len(queries) > MAX_NUM_INDEX_TUNING_QUERIES:
+        return format_error_response(f"Please provide a list of up to {MAX_NUM_INDEX_TUNING_QUERIES} queries to analyze.")
 
     try:
         sql_driver = await get_sql_driver()
-        dta_tool = DTATool(sql_driver)
+        if method == "dta":
+            index_tuning = DatabaseTuningAdvisor(sql_driver)
+        else:
+            index_tuning = LLMOptimizerTool(sql_driver)
+        dta_tool = TextPresentation(sql_driver, index_tuning)
         result = await dta_tool.analyze_queries(queries=queries, max_index_size_mb=max_index_size_mb)
         return format_text_response(result)
     except Exception as e:
@@ -571,7 +589,7 @@ async def main():
     if args.transport == "stdio":
         await mcp.run_stdio_async()
     else:
-        # Update FastMCP settings for SSE transport
+        # Update FastMCP settings based on command line arguments
         mcp.settings.host = args.sse_host
         mcp.settings.port = args.sse_port
         await mcp.run_sse_async()
@@ -581,19 +599,25 @@ async def shutdown(sig=None):
     """Clean shutdown of the server."""
     global shutdown_in_progress
 
-    import os
-
     if shutdown_in_progress:
         logger.warning("Forcing immediate exit")
-
-        os._exit(1)  # Use immediate process termination instead of sys.exit
+        # Use sys.exit instead of os._exit to allow for proper cleanup
+        sys.exit(1)
 
     shutdown_in_progress = True
 
     if sig:
         logger.info(f"Received exit signal {sig.name}")
 
-    os._exit(128 + sig if sig is not None else 0)
+    # Close database connections
+    try:
+        await db_connection.close()
+        logger.info("Closed database connections")
+    except Exception as e:
+        logger.error(f"Error closing database connections: {e}")
+
+    # Exit with appropriate status code
+    sys.exit(128 + sig if sig is not None else 0)
 
 
 if __name__ == "__main__":
