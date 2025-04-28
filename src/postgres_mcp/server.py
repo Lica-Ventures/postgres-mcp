@@ -618,7 +618,3 @@ async def shutdown(sig=None):
 
     # Exit with appropriate status code
     sys.exit(128 + sig if sig is not None else 0)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
