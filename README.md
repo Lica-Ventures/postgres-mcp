@@ -244,6 +244,14 @@ Many MCP clients have similar configuration files to Claude Desktop, and you can
 
 3. Attach your managed database to the app either in the spec (via the `databases` block) or via the control panel (Add components → Create or attach database → Attach existing DigitalOcean database). In the attach dialog, App Platform automatically adds the app as a trusted source when the cluster allows it; otherwise you can add the app yourself from the cluster’s Network Access tab by choosing Quick select → Apps and picking this app. citeturn1view0
 
+4. Because FastMCP enforces host validation, set `ALLOWED_HOSTS` to your custom domain (or `*` while you’re testing) so the SSE connection is accepted:
+   ```yaml
+   - key: ALLOWED_HOSTS
+     scope: RUN_AND_BUILD_TIME
+     type: GENERAL
+     value: pgsql-mcp.mechanigo.ph
+   ```
+
 Once the spec and database are configured, deploy from your repo as usual and monitor the service logs (or the DO console) to verify the MCP server connects to `DATABASE_URI` and starts serving SSE traffic. The spec’s health-check block hits `/sse`, which keeps App Platform from probing `/` (the SSE server only publishes the `/sse` stream), and the managed database component ensures App Platform injects the correct hostname, port, and credentials at runtime, so you only need to keep the placeholders in `.do/app.yaml` in sync with your actual cluster settings. citeturn5view0
 
 ## SSE Transport
