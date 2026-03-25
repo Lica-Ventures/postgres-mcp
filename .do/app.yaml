@@ -14,10 +14,10 @@ services:
       postgres-mcp --transport=sse --sse-port=8000 --access-mode=$ACCESS_MODE
     envs:
       - key: ACCESS_MODE
-        value: unrestricted
+        value: restricted
         scope: RUN_TIME
         type: general
-      - key: DATABASE_URI
+      - key: DATABASE_URL
         value: ${postgres-mcp-db.DATABASE_URL}
         scope: RUN_TIME
         type: general
