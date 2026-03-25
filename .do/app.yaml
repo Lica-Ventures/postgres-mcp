@@ -1,0 +1,31 @@
+name: postgres-mcp
+services:
+  - name: mcp
+    github:
+      repo: owner/postgres-mcp  # replace with the GitHub slug you deploy from
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: ./Dockerfile
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-1gb
+    instance_count: 1
+    http_port: 8000
+    run_command: >
+      postgres-mcp --transport=sse --sse-port=8000 --access-mode=$ACCESS_MODE
+    envs:
+      - key: ACCESS_MODE
+        value: unrestricted
+        scope: RUN_TIME
+        type: general
+      - key: DATABASE_URI
+        value: ${postgres-mcp-db.DATABASE_URL}
+        scope: RUN_TIME
+        type: general
+databases:
+  - name: postgres-mcp-db
+    engine: PG
+    version: "15"
+    production: true
+    cluster_name: mechanigo-production  # update to the name of the managed Postgres cluster
+    db_name: mechanigoph_db_pooling            # update to the database name you want to connect
+    db_user: doadmin            # update to the role that App Platform should configure

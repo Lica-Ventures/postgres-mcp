@@ -236,6 +236,16 @@ Many MCP clients have similar configuration files to Claude Desktop, and you can
 - If you are using Goose run `goose configure`, then select `Add Extension`.
 - If you are using Qodo Gen, open the Chat panel, click `Connect more tools`, click `+ Add new MCP`, then add the new configuration.
 
+## Deploying on DigitalOcean App Platform
+
+1. Customize the app spec stored at `.do/app.yaml`. It already builds the Docker image from this repo, runs the MCP server with `postgres-mcp --transport=sse --sse-port=8000`, and routes traffic to port 8000 so App Platform can reach the SSE endpoint. Replace `services.github.repo` with the owner/repo slug you deploy from, and update the `databases` block so `cluster_name`, `db_name`, and `db_user` match the managed Postgres cluster and credentials that should be attached to this app. You can also flip the `ACCESS_MODE` environment entry to `restricted` if you only want read-only SQL. The spec uses `${postgres-mcp-db.DATABASE_URL}` so the service reads the bindable connection string that App Platform provides once the database component is attached; do not hardcode host or port overrides. citeturn5view0
+
+2. Apply the spec by editing it in the control panel or running the DigitalOcean CLI command shown in the docs (for example `doctl apps update <app-id> --spec .do/app.yaml`). citeturn0view0
+
+3. Attach your managed database to the app either in the spec (via the `databases` block) or via the control panel (Add components → Create or attach database → Attach existing DigitalOcean database). In the attach dialog, App Platform automatically adds the app as a trusted source when the cluster allows it; otherwise you can add the app yourself from the cluster’s Network Access tab by choosing Quick select → Apps and picking this app. citeturn1view0
+
+Once the spec and database are configured, deploy from your repo as usual and monitor the service logs (or the DO console) to verify the MCP server connects to `DATABASE_URI` and starts serving SSE traffic. The managed database component ensures App Platform injects the correct hostname, port, and credentials at runtime, so you only need to keep the placeholders in `.do/app.yaml` in sync with your actual cluster settings. citeturn5view0
+
 ## SSE Transport
 
 Postgres MCP Pro supports the [SSE transport](https://modelcontextprotocol.io/docs/concepts/transports#server-sent-events-sse), which allows multiple MCP clients to share one server, possibly a remote server.
