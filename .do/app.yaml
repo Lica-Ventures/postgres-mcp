@@ -16,18 +16,19 @@ services:
       - key: ACCESS_MODE
         value: restricted
         scope: RUN_TIME
-        type: general
+        type: GENERAL
       - key: DATABASE_URI
         value: ${postgres-mcp-db.DATABASE_URL}
         scope: RUN_TIME
-        type: general
+        type: GENERAL
     health_check:
-      protocol: HTTP
-      path: /sse
-      interval_seconds: 10
+      initial_delay_seconds: 10
+      period_seconds: 10
       timeout_seconds: 5
-      healthy_threshold: 2
-      unhealthy_threshold: 4
+      success_threshold: 2
+      failure_threshold: 4
+      http_path: /sse
+      port: 8000
 databases:
   - name: postgres-mcp-db
     engine: PG
