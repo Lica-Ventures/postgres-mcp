@@ -13,7 +13,7 @@ from typing import Union
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
-from mcp.server.transport_security import HostValidationSettings, TransportSecuritySettings
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import Field
 from pydantic import validate_call
@@ -35,16 +35,15 @@ from .sql import check_hypopg_installation_status
 from .sql import obfuscate_password
 from .top_queries import TopQueriesCalc
 
-# Initialize FastMCP with default settings
+# Initialize FastMCP with transport security settings when hosts are restricted
 allowed_hosts_env = os.environ.get("ALLOWED_HOSTS", "")
 allowed_hosts = [host.strip() for host in allowed_hosts_env.split(",") if host.strip()]
-host_validation_enabled = bool(allowed_hosts and "*" not in allowed_hosts)
-transport_security = TransportSecuritySettings(
-    host_validation=HostValidationSettings(
-        enabled=host_validation_enabled,
+transport_security = None
+if allowed_hosts and "*" not in allowed_hosts:
+    transport_security = TransportSecuritySettings(
         allowed_hosts=allowed_hosts,
+        enable_dns_rebinding_protection=True,
     )
-)
 mcp = FastMCP("postgres-mcp", transport_security=transport_security)
 
 # Constants
