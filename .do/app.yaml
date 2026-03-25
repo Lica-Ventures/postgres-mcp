@@ -2,7 +2,7 @@ name: postgres-mcp
 services:
   - name: mcp
     github:
-      repo: owner/postgres-mcp  # replace with the GitHub slug you deploy from
+      repo: Lica-Ventures/postgres-mcp
       branch: main
       deploy_on_push: true
     dockerfile_path: ./Dockerfile
@@ -26,6 +26,6 @@ databases:
     engine: PG
     version: "15"
     production: true
-    cluster_name: mechanigo-production  # update to the name of the managed Postgres cluster
-    db_name: mechanigoph_db_pooling            # update to the database name you want to connect
-    db_user: doadmin            # update to the role that App Platform should configure
+    cluster_name: mechanigo-production
+    db_name: mechanigoph_db_pooling
+    db_user: doadmin
