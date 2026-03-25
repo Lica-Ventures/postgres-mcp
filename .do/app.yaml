@@ -11,16 +11,23 @@ services:
     instance_count: 1
     http_port: 8000
     run_command: >
-      postgres-mcp --transport=sse --sse-port=8000 --access-mode=$ACCESS_MODE
+      postgres-mcp --transport=sse --sse-port=8000 --sse-host=0.0.0.0 --access-mode=$ACCESS_MODE
     envs:
       - key: ACCESS_MODE
         value: restricted
         scope: RUN_TIME
         type: general
-      - key: DATABASE_URL
+      - key: DATABASE_URI
         value: ${postgres-mcp-db.DATABASE_URL}
         scope: RUN_TIME
         type: general
+    health_check:
+      protocol: HTTP
+      path: /sse
+      interval_seconds: 10
+      timeout_seconds: 5
+      healthy_threshold: 2
+      unhealthy_threshold: 4
 databases:
   - name: postgres-mcp-db
     engine: PG
