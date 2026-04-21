@@ -238,21 +238,31 @@ Many MCP clients have similar configuration files to Claude Desktop, and you can
 
 ## Deploying on DigitalOcean App Platform
 
-1. Customize the app spec stored at `.do/app.yaml`. It already builds the Docker image from this repo, runs the MCP server with `postgres-mcp --transport=sse --sse-port=8000 --sse-host=0.0.0.0`, and routes traffic to port 8000 so App Platform can reach the SSE endpoint. Replace `services.github.repo` with the owner/repo slug you deploy from, and update the `databases` block so `cluster_name`, `db_name`, and `db_user` match the managed Postgres cluster and credentials that should be attached to this app. You can also flip the `ACCESS_MODE` environment entry to `restricted` if you only want read-only SQL. The spec uses `${postgres-mcp-db.DATABASE_URL}` so the service reads the bindable connection string that App Platform provides once the database component is attached; do not hardcode host or port overrides. citeturn5view0
+This repo now treats DigitalOcean App Platform as a deployment target, not a build target. The code stays the same; each app instance gets its own DO spec and its own database binding.
 
-2. Apply the spec by editing it in the control panel or running the DigitalOcean CLI command shown in the docs (for example `doctl apps update <app-id> --spec .do/app.yaml`). citeturn0view0
+1. Start from the spec templates in `.do/`:
+   - `.do/app.yaml` is the reusable generic template.
+   - `.do/app.mechanigo.yaml` is an example for the mechanigo readonly database.
+   - `.do/app.inventory.yaml` is an example for the inventory readonly database.
 
-3. Attach your managed database to the app either in the spec (via the `databases` block) or via the control panel (Add components → Create or attach database → Attach existing DigitalOcean database). In the attach dialog, App Platform automatically adds the app as a trusted source when the cluster allows it; otherwise you can add the app yourself from the cluster’s Network Access tab by choosing Quick select → Apps and picking this app. citeturn1view0
+2. For each App Platform app, set these values in the spec you deploy:
+   - `services.github.repo` to this GitHub repo slug.
+   - `databases.cluster_name`, `db_name`, and `db_user` to the target DO Postgres cluster.
+   - `ACCESS_MODE=restricted` for readonly deployments.
+   - `ALLOWED_HOSTS` to the app domain you will use for SSE clients, if you expose SSE through a custom host.
 
-4. Because FastMCP enforces host validation, set `ALLOWED_HOSTS` to your custom domain (or `*` while you’re testing) so the SSE connection is accepted:
-   ```yaml
-   - key: ALLOWED_HOSTS
-     scope: RUN_AND_BUILD_TIME
-     type: GENERAL
-     value: pgsql-mcp.mechanigo.ph
-   ```
+3. Keep the connection string injected by App Platform:
+   - `DATABASE_URI` should stay bound to `${postgres-mcp-db.DATABASE_URL}`.
+   - Do not hardcode host, port, or password values into the spec.
 
-Once the spec and database are configured, deploy from your repo as usual and monitor the service logs (or the DO console) to verify the MCP server connects to `DATABASE_URI` and starts serving SSE traffic. The spec’s health-check block hits `/sse`, which keeps App Platform from probing `/` (the SSE server only publishes the `/sse` stream), and the managed database component ensures App Platform injects the correct hostname, port, and credentials at runtime, so you only need to keep the placeholders in `.do/app.yaml` in sync with your actual cluster settings. citeturn5view0
+4. Create one App Platform app per database target:
+   - Mechanigo app points at the mechanigo readonly database.
+   - Inventory app points at the inventory readonly database.
+   - Each app gets the same code, but a different database binding and domain.
+
+5. Deploy each app from its own spec file using the DigitalOcean control panel or `doctl apps update <app-id> --spec <path-to-spec>`.
+
+The runtime behavior already supports this model: `DATABASE_URI` is read at startup, `ACCESS_MODE` controls readonly enforcement, and the SSE transport is exposed on port 8000.
 
 ## SSE Transport
 

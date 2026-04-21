@@ -1,4 +1,4 @@
-name: postgres-mcp
+name: postgres-mcp-inventory
 services:
   - name: mcp
     github:
@@ -23,7 +23,7 @@ services:
         type: GENERAL
       # Uncomment and set this when you use a custom domain for SSE clients.
       # - key: ALLOWED_HOSTS
-      #   value: pgsql-mcp.example.com
+      #   value: pgsql-mcp.inventory.example.com
       #   scope: RUN_TIME
       #   type: GENERAL
     health_check:
@@ -39,6 +39,6 @@ databases:
     engine: PG
     version: "15"
     production: true
-    cluster_name: <YOUR_DO_DATABASE_CLUSTER>
-    db_name: <YOUR_DB_NAME>
-    db_user: <YOUR_DB_USER>
+    cluster_name: <YOUR_INVENTORY_DO_DATABASE_CLUSTER>
+    db_name: <YOUR_INVENTORY_DB_NAME>
+    db_user: <YOUR_INVENTORY_DB_USER>

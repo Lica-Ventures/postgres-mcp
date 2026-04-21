@@ -1,8 +1,8 @@
-name: postgres-mcp
+name: postgres-mcp-mechanigo
 services:
   - name: mcp
     github:
-      repo: <YOUR_GITHUB_ORG>/<YOUR_REPO>
+      repo: Lica-Ventures/postgres-mcp
       branch: main
       deploy_on_push: true
     dockerfile_path: ./Dockerfile
@@ -22,10 +22,10 @@ services:
         scope: RUN_TIME
         type: GENERAL
       # Uncomment and set this when you use a custom domain for SSE clients.
-      # - key: ALLOWED_HOSTS
-      #   value: pgsql-mcp.example.com
-      #   scope: RUN_TIME
-      #   type: GENERAL
+      - key: ALLOWED_HOSTS
+        value: pgsql-mcp.mechanigo.ph
+        scope: RUN_TIME
+        type: GENERAL
     health_check:
       initial_delay_seconds: 10
       period_seconds: 10
@@ -39,6 +39,6 @@ databases:
     engine: PG
     version: "15"
     production: true
-    cluster_name: <YOUR_DO_DATABASE_CLUSTER>
-    db_name: <YOUR_DB_NAME>
-    db_user: <YOUR_DB_USER>
+    cluster_name: mechanigo-production
+    db_name: mechanigoph_db_pooling
+    db_user: doadmin
