@@ -18,6 +18,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 from pydantic import validate_call
 
+from .auth import _get_proxy_provider
 from .auth import build_auth0_mcp_kwargs
 from postgres_mcp.index.dta_calc import DatabaseTuningAdvisor
 
@@ -46,6 +47,36 @@ if allowed_hosts and "*" not in allowed_hosts:
         enable_dns_rebinding_protection=True,
     )
 mcp = FastMCP("postgres-mcp", transport_security=transport_security, **build_auth0_mcp_kwargs())
+
+# Register the OAuth callback route when proxy mode is active.
+# Auth0 redirects here after the user logs in; we exchange the code and
+# redirect back to Claude Desktop with our own opaque code.
+_proxy = _get_proxy_provider()
+if _proxy is not None:
+    from starlette.requests import Request
+    from starlette.responses import RedirectResponse
+    from starlette.responses import Response
+
+    @mcp.custom_route("/oauth/callback", methods=["GET"])
+    async def oauth_callback(request: Request) -> Response:
+        code = request.query_params.get("code")
+        state = request.query_params.get("state")
+        error = request.query_params.get("error")
+
+        if error:
+            desc = request.query_params.get("error_description", error)
+            logger.warning("Auth0 returned error in callback: %s", desc)
+            return Response(f"Authentication error: {desc}", status_code=400)
+
+        if not code or not state:
+            return Response("Missing code or state parameter", status_code=400)
+
+        try:
+            redirect_url = await _proxy.handle_callback(code, state)
+            return RedirectResponse(url=redirect_url, status_code=302)
+        except Exception as exc:
+            logger.error("OAuth callback failed: %s", exc)
+            return Response(f"OAuth callback error: {exc}", status_code=500)
 
 # Constants
 PG_STAT_STATEMENTS = "pg_stat_statements"
