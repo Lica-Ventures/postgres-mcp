@@ -264,6 +264,29 @@ This repo now treats DigitalOcean App Platform as a deployment target, not a bui
 
 The runtime behavior already supports this model: `DATABASE_URI` is read at startup, `ACCESS_MODE` controls readonly enforcement, and the SSE transport is exposed on port 8000.
 
+## Auth0 Security
+
+This server can also protect the MCP endpoint with Auth0.
+
+1. Set these environment variables in your App Platform spec:
+   - `AUTH0_ISSUER_URL`
+   - `AUTH0_AUDIENCE`
+   - `MCP_RESOURCE_SERVER_URL`
+   - `MCP_REQUIRED_SCOPES` if you want to override the default `mcp:use` scope
+
+2. Keep your existing Auth0 Post Login Action if you already restrict access by email domain.
+
+3. Reconnect the MCP server in Claude Desktop after the auth change so the client can complete the OAuth flow and get a fresh token.
+
+4. Leave `AUTH0_*` unset for local development or if you want the server to stay unauthenticated.
+
+### Where To Find Values
+
+- `AUTH0_ISSUER_URL`: your Auth0 tenant domain, or your Auth0 custom domain if you use one. If you use the default tenant domain, it usually looks like `https://YOUR_TENANT.us.auth0.com/`. If you use a custom domain, get it from Auth0 Dashboard -> Branding -> Custom Domains.
+- `AUTH0_AUDIENCE`: the API Identifier for the Auth0 API you create for this MCP server. Find it in Auth0 Dashboard -> Applications -> APIs -> select your API -> Settings -> Identifier.
+- `MCP_RESOURCE_SERVER_URL`: the public URL of the MCP app itself, such as your DigitalOcean App Platform domain or custom domain. For mechanigo, that is the URL you set in `MCP_RESOURCE_SERVER_URL` and `ALLOWED_HOSTS`.
+- `MCP_REQUIRED_SCOPES`: optional. Set it to the scope(s) you want the MCP server to require, such as `mcp:use`. If you do not set it, the server defaults to `mcp:use`.
+
 ## SSE Transport
 
 Postgres MCP Pro supports the [SSE transport](https://modelcontextprotocol.io/docs/concepts/transports#server-sent-events-sse), which allows multiple MCP clients to share one server, possibly a remote server.

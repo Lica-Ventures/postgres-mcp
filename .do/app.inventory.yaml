@@ -21,6 +21,24 @@ services:
         value: ${postgres-mcp-db.DATABASE_URL}
         scope: RUN_TIME
         type: GENERAL
+      # Auth0 protection for Claude Desktop / remote MCP clients.
+      # Uncomment and replace with your real values to enable auth.
+      # - key: AUTH0_ISSUER_URL
+      #   value: https://YOUR_TENANT.us.auth0.com/
+      #   scope: RUN_TIME
+      #   type: GENERAL
+      # - key: AUTH0_AUDIENCE
+      #   value: https://postgres-mcp
+      #   scope: RUN_TIME
+      #   type: GENERAL
+      # - key: MCP_RESOURCE_SERVER_URL
+      #   value: https://pgsql-mcp.inventory.example.com
+      #   scope: RUN_TIME
+      #   type: GENERAL
+      # - key: MCP_REQUIRED_SCOPES
+      #   value: mcp:use
+      #   scope: RUN_TIME
+      #   type: GENERAL
       # Uncomment and set this when you use a custom domain for SSE clients.
       # - key: ALLOWED_HOSTS
       #   value: pgsql-mcp.inventory.example.com

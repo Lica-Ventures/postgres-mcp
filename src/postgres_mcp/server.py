@@ -18,6 +18,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 from pydantic import validate_call
 
+from .auth import build_auth0_mcp_kwargs
 from postgres_mcp.index.dta_calc import DatabaseTuningAdvisor
 
 from .artifacts import ErrorResult
@@ -44,7 +45,7 @@ if allowed_hosts and "*" not in allowed_hosts:
         allowed_hosts=allowed_hosts,
         enable_dns_rebinding_protection=True,
     )
-mcp = FastMCP("postgres-mcp", transport_security=transport_security)
+mcp = FastMCP("postgres-mcp", transport_security=transport_security, **build_auth0_mcp_kwargs())
 
 # Constants
 PG_STAT_STATEMENTS = "pg_stat_statements"
