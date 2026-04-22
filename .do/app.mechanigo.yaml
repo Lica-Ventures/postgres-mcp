@@ -31,7 +31,7 @@ services:
         scope: RUN_TIME
         type: GENERAL
       - key: MCP_RESOURCE_SERVER_URL
-        value: https://pgsql-mcp.mechanigo.ph
+        value: https://pgsql-mcp.mechanigo.ph/mcp
         scope: RUN_TIME
         type: GENERAL
       - key: MCP_REQUIRED_SCOPES
