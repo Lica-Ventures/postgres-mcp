@@ -11,7 +11,7 @@ services:
     instance_count: 1
     http_port: 8000
     run_command: >
-      postgres-mcp --transport=sse --sse-port=8000 --sse-host=0.0.0.0 --access-mode=$ACCESS_MODE
+      postgres-mcp --transport=streamable-http --streamable-http-port=8000 --streamable-http-host=0.0.0.0 --access-mode=$ACCESS_MODE
     envs:
       - key: ACCESS_MODE
         value: restricted
@@ -21,7 +21,14 @@ services:
         value: ${postgres-mcp-db.DATABASE_URL}
         scope: RUN_TIME
         type: GENERAL
-      # Auth0 protection for Claude Desktop / remote MCP clients.
+      # Auth0 proxy mode — MCP server acts as OAuth AS, proxies to Auth0.
+      - key: AUTH0_CLIENT_ID
+        value: vvqnZqU7L6so76X8egB4pLF92MkDff1y
+        scope: RUN_TIME
+        type: GENERAL
+      - key: AUTH0_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
       - key: AUTH0_ISSUER_URL
         value: https://dev-1whgf1szbodvzfhk.us.auth0.com/
         scope: RUN_TIME
@@ -49,7 +56,7 @@ services:
       timeout_seconds: 5
       success_threshold: 2
       failure_threshold: 4
-      http_path: /sse
+      http_path: /.well-known/oauth-protected-resource/mcp
       port: 8000
 databases:
   - name: postgres-mcp-db

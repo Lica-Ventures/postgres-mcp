@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import Any
 
 import jwt
@@ -12,7 +13,13 @@ from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.provider import TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 
+if TYPE_CHECKING:
+    from .auth0_proxy import Auth0ProxyProvider
+
 logger = logging.getLogger(__name__)
+
+# Set in build_auth0_mcp_kwargs() when proxy mode is active.
+_proxy_provider: Auth0ProxyProvider | None = None
 
 
 @dataclass(frozen=True)
@@ -126,22 +133,80 @@ class Auth0TokenVerifier(TokenVerifier):
         )
 
 
+def _get_proxy_provider() -> "Auth0ProxyProvider | None":
+    """Return the active proxy provider if proxy mode is configured, else None."""
+    return _proxy_provider
+
+
 def build_auth0_mcp_kwargs() -> dict[str, Any]:
-    """Build FastMCP auth keyword arguments when Auth0 is configured."""
+    """Build FastMCP auth keyword arguments when Auth0 is configured.
+
+    Proxy mode (recommended for Claude Desktop):
+        Set AUTH0_CLIENT_ID + AUTH0_CLIENT_SECRET in addition to the base vars.
+        The MCP server becomes its own OAuth AS and proxies auth to Auth0.
+        This avoids the DCR client-grant problem where every new Claude Desktop
+        session registers a new unauthorized client.
+
+    Token-verifier mode (legacy / service tokens):
+        Omit AUTH0_CLIENT_ID / AUTH0_CLIENT_SECRET.  The server validates Bearer
+        JWTs directly; the caller must obtain a token from Auth0 externally.
+    """
+    global _proxy_provider
 
     config = load_auth0_config_from_env()
     if config is None:
         return {}
 
-    logger.info("Auth0 protection enabled for issuer %s", config.issuer_url)
+    client_id = os.environ.get("AUTH0_CLIENT_ID")
+    client_secret = os.environ.get("AUTH0_CLIENT_SECRET")
 
+    if client_id and client_secret:
+        from urllib.parse import urlparse
+
+        from mcp.server.auth.settings import ClientRegistrationOptions
+
+        from .auth0_proxy import Auth0ProxyProvider
+
+        # Derive the MCP server base URL from MCP_RESOURCE_SERVER_URL.
+        # e.g. https://pgsql-mcp.mechanigo.ph/mcp  →  https://pgsql-mcp.mechanigo.ph
+        parsed = urlparse(config.resource_server_url)
+        server_base_url = f"{parsed.scheme}://{parsed.netloc}"
+        callback_url = f"{server_base_url}/oauth/callback"
+
+        logger.info(
+            "Auth0 proxy mode enabled — MCP server is OAuth AS, proxying to %s",
+            config.issuer_url,
+        )
+
+        provider = Auth0ProxyProvider(
+            issuer_url=config.issuer_url,
+            audience=config.audience,
+            client_id=client_id,
+            client_secret=client_secret,
+            callback_url=callback_url,
+            required_scopes=config.required_scopes,
+        )
+        _proxy_provider = provider
+
+        auth_settings = AuthSettings(
+            issuer_url=server_base_url,
+            resource_server_url=config.resource_server_url,
+            required_scopes=config.required_scopes,
+            client_registration_options=ClientRegistrationOptions(enabled=True),
+        )
+        return {
+            "auth_server_provider": provider,
+            "auth": auth_settings,
+        }
+
+    # Legacy token-verifier mode
+    logger.info("Auth0 token-verifier mode enabled for issuer %s", config.issuer_url)
     verifier = Auth0TokenVerifier(config)
     auth_settings = AuthSettings(
         issuer_url=config.issuer_url,
         resource_server_url=config.resource_server_url,
         required_scopes=config.required_scopes,
     )
-
     return {
         "token_verifier": verifier,
         "auth": auth_settings,
