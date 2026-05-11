@@ -11,7 +11,7 @@ services:
     instance_count: 1
     http_port: 8000
     run_command: >
-      postgres-mcp --transport=streamable-http --streamable-http-port=8000 --streamable-http-host=0.0.0.0 --access-mode=$ACCESS_MODE
+      postgres-mcp --transport=streamable-http --streamable-http-port=8000 --streamable-http-host=0.0.0.0 --access-mode=restricted
     envs:
       - key: ACCESS_MODE
         value: restricted
