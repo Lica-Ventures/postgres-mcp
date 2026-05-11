@@ -38,7 +38,7 @@ services:
         scope: RUN_TIME
         type: GENERAL
       - key: MCP_RESOURCE_SERVER_URL
-        value: https://pgsql-mcp.inventory.licaventures.com/mcp
+        value: https://pgsql-mcp.inventory.mechanigo.com/mcp
         scope: RUN_TIME
         type: GENERAL
       - key: MCP_REQUIRED_SCOPES
@@ -46,7 +46,7 @@ services:
         scope: RUN_TIME
         type: GENERAL
       - key: ALLOWED_HOSTS
-        value: pgsql-mcp.inventory.licaventures.com
+        value: pgsql-mcp.inventory.mechanigo.com
         scope: RUN_TIME
         type: GENERAL
     health_check:
