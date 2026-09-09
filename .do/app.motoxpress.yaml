@@ -75,9 +75,11 @@ services:
 # alone; any other Host header returns 403. Note that this does NOT close off
 # the generated *.ondigitalocean.app URL, which still serves: App Platform's
 # router rewrites Host to the primary domain before the container sees it, so
-# the app cannot reject it. Restrict it with an ingress authority match if that
-# matters. The Auth0 Allowed Callback URL must be
-# https://mcp.motoxpress.ph/oauth/callback.
+# the app cannot reject it. Both hostnames are intentionally left serving here,
+# rather than being an oversight; an ingress authority match would close the
+# generated one off if that ever needs to change. Either way both hostnames
+# still require a valid bearer token.
+# The Auth0 Allowed Callback URL must be https://mcp.motoxpress.ph/oauth/callback.
 domains:
   - domain: mcp.motoxpress.ph
     type: PRIMARY
