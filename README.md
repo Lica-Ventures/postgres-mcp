@@ -268,7 +268,15 @@ This repo now treats DigitalOcean App Platform as a deployment target, not a bui
    App Platform resolves these at deploy time. They point at the generated hostname until a
    `PRIMARY` custom domain is added, then follow that instead. This matters for security:
    `ALLOWED_HOSTS` drives DNS-rebinding protection, and a hostname mismatch rejects every
-   request, including the health check. Note that leaving all three of `AUTH0_ISSUER_URL`,
+   request, including the health check.
+
+   Once a `PRIMARY` custom domain is live, `${APP_DOMAIN}` resolves to it alone, so the
+   generated `*.ondigitalocean.app` hostname stops being an accepted `Host` and returns
+   403. That is usually what you want. If you need the generated hostname to keep working
+   as well, list both explicitly in `ALLOWED_HOSTS` as a comma-separated value instead of
+   using the bindable, which is what `mgo-read-only-pg-mcp` does. Adding or changing the
+   `PRIMARY` domain also changes the OAuth resource identifier, so the Auth0 Allowed
+   Callback URL must be updated to `https://<new-domain>/oauth/callback` at the same time. Note that leaving all three of `AUTH0_ISSUER_URL`,
    `AUTH0_AUDIENCE`, and `MCP_RESOURCE_SERVER_URL` unset disables authentication entirely,
    so never deploy a spec against a production database with those omitted.
 
@@ -279,14 +287,15 @@ This repo now treats DigitalOcean App Platform as a deployment target, not a bui
 4. Create one App Platform app per database target:
    - Mechanigo app points at the mechanigo readonly database.
    - Inventory app points at the inventory readonly database.
-   - Motoxpress app points at the motoxpress live API database. Two things differ from
-     the other two: that team has no Postgres read replica yet, so the spec binds the
-     primary and relies on `--access-mode=restricted` alone; and it has no custom domain
-     yet, so it serves on the generated hostname via the `${APP_*}` bindables above.
-     Repoint `cluster_name` at a replica once one exists, and uncomment the `domains`
-     block to move it to `pgsql-mcp.motoxpress.ph`.
+   - Motoxpress app points at the motoxpress live API database, and serves on
+     `mcp.motoxpress.ph`. One thing differs from the other two: that team has no Postgres
+     read replica yet, so the spec binds the primary and relies on
+     `--access-mode=restricted` alone. Repoint `cluster_name` at a replica once one exists.
      Note that most motoxpress databases are MySQL, which this server cannot read; only
      the `motoxpress-v2-api-*` and `motoxpress-strapi-db` clusters are Postgres.
+     Use the `motoxpress.ph` zone for custom domains, not `motoxpress.com`: the latter's
+     nameservers point at Bluehost, so records added in the DigitalOcean panel for that
+     zone never resolve.
    - Each app gets the same code, but a different database binding and domain.
 
 5. Deploy each app from its own spec file using the DigitalOcean control panel or `doctl apps update <app-id> --spec <path-to-spec>`.

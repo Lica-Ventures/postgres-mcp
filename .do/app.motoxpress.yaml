@@ -66,14 +66,19 @@ services:
       failure_threshold: 4
       http_path: /.well-known/oauth-protected-resource/mcp
       port: 8000
-# No custom domain yet. To move to pgsql-mcp.motoxpress.ph, uncomment this
-# block and redeploy; the ${APP_*} bindables above will follow the new PRIMARY
-# domain automatically. Remember to add https://pgsql-mcp.motoxpress.ph/oauth/callback
-# to the Auth0 application's Allowed Callback URLs at the same time.
-# domains:
-#   - domain: pgsql-mcp.motoxpress.ph
-#     type: PRIMARY
-#     zone: motoxpress.ph
+# Custom domain. motoxpress.ph is delegated to DigitalOcean nameservers, so
+# App Platform manages the CNAME and the TLS certificate itself.
+# Note that motoxpress.com is NOT usable here: its nameservers point at
+# Bluehost, so records added in the DigitalOcean panel for that zone never
+# resolve.
+# ALLOWED_HOSTS stays ${APP_DOMAIN}, which resolves to this PRIMARY domain once
+# it is live, so the generated *.ondigitalocean.app hostname stops being an
+# accepted Host and returns 403. The Auth0 Allowed Callback URL must therefore
+# be https://mcp.motoxpress.ph/oauth/callback.
+domains:
+  - domain: mcp.motoxpress.ph
+    type: PRIMARY
+    zone: motoxpress.ph
 databases:
   # NOTE: this binds the live primary, not a read-only replica. The mechanigo
   # and inventory apps each bind a replica (mechanigo-db-live-v2-read-only,
