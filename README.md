@@ -244,12 +244,33 @@ This repo now treats DigitalOcean App Platform as a deployment target, not a bui
    - `.do/app.yaml` is the reusable generic template.
    - `.do/app.mechanigo.yaml` is an example for the mechanigo readonly database.
    - `.do/app.inventory.yaml` is an example for the inventory readonly database.
+   - `.do/app.motoxpress.yaml` is an example for the motoxpress database. It lives in a
+     separate DigitalOcean team, so it needs its own `doctl` context.
 
 2. For each App Platform app, set these values in the spec you deploy:
    - `services.github.repo` to this GitHub repo slug.
    - `databases.cluster_name`, `db_name`, and `db_user` to the target DO Postgres cluster.
    - `ACCESS_MODE=restricted` for readonly deployments.
    - `ALLOWED_HOSTS` to the app domain you will use for SSE clients, if you expose SSE through a custom host.
+
+   If you are creating a brand new app and do not have a custom domain yet, the default
+   `*.ondigitalocean.app` hostname is not known until the app exists. Rather than deploying
+   with a placeholder, use App Platform's bindable variables, as `.do/app.motoxpress.yaml`
+   does:
+
+   ```yaml
+   - key: MCP_RESOURCE_SERVER_URL
+     value: ${APP_URL}/mcp
+   - key: ALLOWED_HOSTS
+     value: ${APP_DOMAIN}
+   ```
+
+   App Platform resolves these at deploy time. They point at the generated hostname until a
+   `PRIMARY` custom domain is added, then follow that instead. This matters for security:
+   `ALLOWED_HOSTS` drives DNS-rebinding protection, and a hostname mismatch rejects every
+   request, including the health check. Note that leaving all three of `AUTH0_ISSUER_URL`,
+   `AUTH0_AUDIENCE`, and `MCP_RESOURCE_SERVER_URL` unset disables authentication entirely,
+   so never deploy a spec against a production database with those omitted.
 
 3. Keep the connection string injected by App Platform:
    - `DATABASE_URI` should stay bound to `${postgres-mcp-db.DATABASE_URL}`.
@@ -258,9 +279,18 @@ This repo now treats DigitalOcean App Platform as a deployment target, not a bui
 4. Create one App Platform app per database target:
    - Mechanigo app points at the mechanigo readonly database.
    - Inventory app points at the inventory readonly database.
+   - Motoxpress app points at the motoxpress live API database. Two things differ from
+     the other two: that team has no Postgres read replica yet, so the spec binds the
+     primary and relies on `--access-mode=restricted` alone; and it has no custom domain
+     yet, so it serves on the generated hostname via the `${APP_*}` bindables above.
+     Repoint `cluster_name` at a replica once one exists, and uncomment the `domains`
+     block to move it to `pgsql-mcp.motoxpress.ph`.
+     Note that most motoxpress databases are MySQL, which this server cannot read; only
+     the `motoxpress-v2-api-*` and `motoxpress-strapi-db` clusters are Postgres.
    - Each app gets the same code, but a different database binding and domain.
 
 5. Deploy each app from its own spec file using the DigitalOcean control panel or `doctl apps update <app-id> --spec <path-to-spec>`.
+   For an app in a non-default team, pass the matching context: `doctl apps update <app-id> --spec <path-to-spec> --context <name>`.
 
 The runtime behavior already supports this model: `DATABASE_URI` is read at startup, `ACCESS_MODE` controls readonly enforcement, and the SSE transport is exposed on port 8000.
 
