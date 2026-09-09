@@ -292,6 +292,48 @@ This repo now treats DigitalOcean App Platform as a deployment target, not a bui
 5. Deploy each app from its own spec file using the DigitalOcean control panel or `doctl apps update <app-id> --spec <path-to-spec>`.
    For an app in a non-default team, pass the matching context: `doctl apps update <app-id> --spec <path-to-spec> --context <name>`.
 
+6. Add the app to the database cluster's trusted sources. Binding a cluster in the
+   `databases` block does **not** do this automatically when the cluster already has an
+   explicit allowlist:
+
+   ```bash
+   doctl databases firewalls append <cluster-id> --rule app:<app-id> --context <name>
+   ```
+
+   Use `append`. Do not use `doctl databases firewalls replace`, which substitutes the
+   entire rule set with whatever you pass and will cut other applications off from the
+   database if you omit their rules. Snapshot the existing rules first with
+   `doctl databases firewalls list <cluster-id> -o json`.
+
+   Restart the app afterwards with `doctl apps restart <app-id>`. The connection pool does
+   not recover on its own.
+
+7. Verify the deployment actually works. **The deployment phase is not sufficient
+   evidence.** The health check path only exercises the OAuth metadata endpoint and never
+   touches Postgres, and `server.py` logs a warning and starts anyway when the database is
+   unreachable, so an app with a completely broken database binding still reports
+   `ACTIVE 7/7`. Check the runtime logs instead:
+
+   ```bash
+   doctl apps logs <app-id> mcp --type run --context <name> | grep -E 'connected to database|RESTRICTED'
+   ```
+
+   Expect `Successfully connected to database` and `RESTRICTED mode`. A failure looks like
+   `couldn't get a connection after 30.00 sec` — a timeout rather than a fast
+   authentication error, which indicates dropped packets, meaning the trusted sources step
+   above was missed.
+
+   Then confirm the endpoint fails closed. All three of these must hold:
+
+   ```
+   GET  /.well-known/oauth-protected-resource/mcp   -> 200, and the "resource" field
+                                                       must echo the real hostname
+   POST /mcp  (no or invalid bearer token)          -> 401
+   GET  /mcp  -H 'Host: evil.example.com'           -> 403
+   ```
+
+   The 403 confirms `ALLOWED_HOSTS` resolved rather than being passed through literally.
+
 The runtime behavior already supports this model: `DATABASE_URI` is read at startup, `ACCESS_MODE` controls readonly enforcement, and the SSE transport is exposed on port 8000.
 
 ## Auth0 Security
