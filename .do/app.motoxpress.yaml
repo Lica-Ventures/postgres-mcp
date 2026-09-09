@@ -1,0 +1,127 @@
+name: postgres-mcp-motoxpress
+region: sgp
+services:
+  - name: mcp
+    github:
+      repo: Lica-Ventures/postgres-mcp
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: ./Dockerfile
+    source_dir: .
+    instance_size_slug: apps-s-1vcpu-1gb
+    instance_count: 1
+    http_port: 8000
+    run_command: >
+      postgres-mcp --transport=streamable-http --streamable-http-port=8000 --streamable-http-host=0.0.0.0 --access-mode=restricted
+    envs:
+      - key: ACCESS_MODE
+        value: restricted
+        scope: RUN_TIME
+        type: GENERAL
+      - key: DATABASE_URI
+        value: ${motoxpress-v2-api-live-read-only.DATABASE_URL}
+        scope: RUN_TIME
+        type: GENERAL
+      # Auth0 proxy mode — MCP server acts as OAuth AS, proxies to Auth0.
+      # AUTH0_CLIENT_SECRET is intentionally declared without a value. Set it in
+      # the DO console so the platform stores it encrypted. Never commit the
+      # secret to this file.
+      #
+      # WARNING: `doctl apps update --spec <this file>` REPLACES the whole spec,
+      # so applying this file overwrites the console-set secret with an
+      # encrypted empty string. The app then silently drops out of Auth0 proxy
+      # mode into token-verifier mode: it still requires a bearer token, so it
+      # fails closed rather than open, but Claude Desktop can no longer log in.
+      # After every spec apply, re-set AUTH0_CLIENT_SECRET in the console and
+      # confirm proxy mode by checking that
+      # /.well-known/oauth-authorization-server returns 200 rather than 404.
+      - key: AUTH0_CLIENT_ID
+        value: vvqnZqU7L6so76X8egB4pLF92MkDff1y
+        scope: RUN_TIME
+        type: GENERAL
+      - key: AUTH0_CLIENT_SECRET
+        scope: RUN_TIME
+        type: SECRET
+      - key: AUTH0_ISSUER_URL
+        value: https://dev-1whgf1szbodvzfhk.us.auth0.com/
+        scope: RUN_TIME
+        type: GENERAL
+      - key: AUTH0_AUDIENCE
+        value: https://mcp.licaventures.com
+        scope: RUN_TIME
+        type: GENERAL
+      # ${APP_URL} and ${APP_DOMAIN} are resolved by App Platform at deploy
+      # time. They point at the app's default *.ondigitalocean.app hostname
+      # until a PRIMARY custom domain is added, then they follow that instead.
+      # This keeps ALLOWED_HOSTS correct without hardcoding a hostname that is
+      # unknown before the app exists.
+      - key: MCP_RESOURCE_SERVER_URL
+        value: ${APP_URL}/mcp
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MCP_REQUIRED_SCOPES
+        value: mcp:use
+        scope: RUN_TIME
+        type: GENERAL
+      - key: ALLOWED_HOSTS
+        value: ${APP_DOMAIN}
+        scope: RUN_TIME
+        type: GENERAL
+    health_check:
+      initial_delay_seconds: 10
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 2
+      failure_threshold: 4
+      http_path: /.well-known/oauth-protected-resource/mcp
+      port: 8000
+# Custom domain. motoxpress.ph is delegated to DigitalOcean nameservers, so
+# App Platform manages the CNAME and the TLS certificate itself.
+# Note that motoxpress.com is NOT usable here: its nameservers point at
+# Bluehost, so records added in the DigitalOcean panel for that zone never
+# resolve.
+# ALLOWED_HOSTS stays ${APP_DOMAIN}, which resolves to this PRIMARY domain
+# alone; any other Host header returns 403. Note that this does NOT close off
+# the generated *.ondigitalocean.app URL, which still serves: App Platform's
+# router rewrites Host to the primary domain before the container sees it, so
+# the app cannot reject it. Both hostnames are intentionally left serving here,
+# rather than being an oversight; an ingress authority match would close the
+# generated one off if that ever needs to change. Either way both hostnames
+# still require a valid bearer token.
+# The Auth0 Allowed Callback URL must be https://mcp.motoxpress.ph/oauth/callback.
+domains:
+  - domain: mcp.motoxpress.ph
+    type: PRIMARY
+    zone: motoxpress.ph
+databases:
+  # Binds the read-only replica of motoxpress-v2-api-live, matching how the
+  # mechanigo and inventory apps bind mechanigo-db-live-v2-read-only and
+  # lica-inventory-db-live-readonly respectively.
+  #
+  # This is defence in depth rather than convenience. --access-mode=restricted
+  # blocks writes in application code; a replica makes Postgres itself refuse
+  # them, so a bug or bypass in that flag cannot mutate production data. It also
+  # keeps MCP query load off the primary.
+  #
+  # The replica is stream-replicated, so reads can lag the primary by a short
+  # interval. Data written through the API moments earlier may not be visible
+  # yet.
+  #
+  # The `name` field below MUST match cluster_name. App Platform keys the
+  # database attachment on `name`, not on cluster_name: changing only
+  # cluster_name under an unchanged `name` leaves the old attachment in place
+  # and DATABASE_URL keeps resolving to the previous cluster, silently. That is
+  # why the mechanigo and inventory apps also set name == cluster_name.
+  #
+  # The replica carries its own trusted sources, separate from the primary's,
+  # but inherits a copy of the primary's rules at fork time. Because this app
+  # was already allowlisted on the primary when the replica was forked, it was
+  # carried over and needed no manual step. A replica forked before the app
+  # existed would need the app added explicitly, or connections time out.
+  - name: motoxpress-v2-api-live-read-only
+    engine: PG
+    version: "18"
+    production: true
+    cluster_name: motoxpress-v2-api-live-read-only
+    db_name: motoxpress-v2-api-live
+    db_user: doadmin

@@ -244,12 +244,65 @@ This repo now treats DigitalOcean App Platform as a deployment target, not a bui
    - `.do/app.yaml` is the reusable generic template.
    - `.do/app.mechanigo.yaml` is an example for the mechanigo readonly database.
    - `.do/app.inventory.yaml` is an example for the inventory readonly database.
+   - `.do/app.motoxpress.yaml` is an example for the motoxpress database. It lives in a
+     separate DigitalOcean team, so it needs its own `doctl` context.
 
 2. For each App Platform app, set these values in the spec you deploy:
    - `services.github.repo` to this GitHub repo slug.
    - `databases.cluster_name`, `db_name`, and `db_user` to the target DO Postgres cluster.
    - `ACCESS_MODE=restricted` for readonly deployments.
    - `ALLOWED_HOSTS` to the app domain you will use for SSE clients, if you expose SSE through a custom host.
+
+   If you are creating a brand new app and do not have a custom domain yet, the default
+   `*.ondigitalocean.app` hostname is not known until the app exists. Rather than deploying
+   with a placeholder, use App Platform's bindable variables, as `.do/app.motoxpress.yaml`
+   does:
+
+   ```yaml
+   - key: MCP_RESOURCE_SERVER_URL
+     value: ${APP_URL}/mcp
+   - key: ALLOWED_HOSTS
+     value: ${APP_DOMAIN}
+   ```
+
+   App Platform resolves these at deploy time. They point at the generated hostname until a
+   `PRIMARY` custom domain is added, then follow that instead. This matters for security:
+   `ALLOWED_HOSTS` drives DNS-rebinding protection, and a hostname mismatch rejects every
+   request, including the health check.
+
+   Once a `PRIMARY` custom domain is live, `${APP_DOMAIN}` resolves to that domain alone.
+   Sending any other `Host` header to the app returns 403, including the generated
+   `*.ondigitalocean.app` hostname.
+
+   **`ALLOWED_HOSTS` does not close off the generated hostname.** Requests to the
+   `*.ondigitalocean.app` URL still succeed after a custom domain is added, because App
+   Platform's router rewrites the `Host` header to the primary domain before forwarding to
+   the container. The app therefore never sees the generated hostname and cannot reject it;
+   you can confirm this by requesting the metadata endpoint on the generated URL and
+   observing that `resource` reports the custom domain. `ALLOWED_HOSTS` is
+   DNS-rebinding protection for hosts the router passes through unchanged, not an
+   access control list for your own app's hostnames.
+
+   To actually stop serving on the generated hostname, restrict it at the ingress instead,
+   which is what `mgo-read-only-pg-mcp` does:
+
+   ```yaml
+   ingress:
+     rules:
+       - component:
+           name: mcp
+         match:
+           authority:
+             exact: mcp.example.com
+           path:
+             prefix: /
+   ```
+
+   Adding or changing the `PRIMARY` domain also changes the OAuth resource identifier, so
+   the Auth0 Allowed Callback URL must be updated to `https://<new-domain>/oauth/callback`
+   at the same time. Note that leaving all three of `AUTH0_ISSUER_URL`,
+   `AUTH0_AUDIENCE`, and `MCP_RESOURCE_SERVER_URL` unset disables authentication entirely,
+   so never deploy a spec against a production database with those omitted.
 
 3. Keep the connection string injected by App Platform:
    - `DATABASE_URI` should stay bound to `${postgres-mcp-db.DATABASE_URL}`.
@@ -258,9 +311,114 @@ This repo now treats DigitalOcean App Platform as a deployment target, not a bui
 4. Create one App Platform app per database target:
    - Mechanigo app points at the mechanigo readonly database.
    - Inventory app points at the inventory readonly database.
+   - Motoxpress app points at `motoxpress-v2-api-live-read-only`, a read replica of
+     `motoxpress-v2-api-live`, and serves on `mcp.motoxpress.ph`. This matches the other
+     two: every MCP app binds a replica rather than a primary, so Postgres itself refuses
+     writes instead of relying on `--access-mode=restricted` alone.
+     Note that most motoxpress databases are MySQL, which this server cannot read; only
+     the `motoxpress-v2-api-*` and `motoxpress-strapi-db` clusters are Postgres.
+     When creating the replica, pass `--region` explicitly:
+     `doctl databases replica create` defaults to `nyc1` regardless of where the primary
+     lives, which would put the replica an ocean away from the app.
+     Use the `motoxpress.ph` zone for custom domains, not `motoxpress.com`: the latter's
+     nameservers point at Bluehost, so records added in the DigitalOcean panel for that
+     zone never resolve.
    - Each app gets the same code, but a different database binding and domain.
 
 5. Deploy each app from its own spec file using the DigitalOcean control panel or `doctl apps update <app-id> --spec <path-to-spec>`.
+   For an app in a non-default team, pass the matching context: `doctl apps update <app-id> --spec <path-to-spec> --context <name>`.
+
+6. Know what a spec apply destroys before you run one. `doctl apps update --spec` replaces
+   the **entire** spec, so any value that lives only in the console is overwritten by what
+   the file says. In particular an env var declared `type: SECRET` with no value in the
+   file replaces the stored secret with an encrypted empty string.
+
+   For these apps that means `AUTH0_CLIENT_SECRET` is cleared on every apply, which
+   silently drops the server out of Auth0 proxy mode and into token-verifier mode. It still
+   requires a bearer token, so it fails closed rather than open, but OAuth login stops
+   working. After every apply, re-set the secret in the console and confirm proxy mode is
+   back:
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' https://<domain>/.well-known/oauth-authorization-server
+   ```
+
+   200 means proxy mode. 404 means the secret is missing and the server is in
+   token-verifier mode.
+
+   Renaming a database binding is also rejected in a single apply
+   (`cannot create and delete a database in a single spec change`). Because App Platform
+   keys the attachment on the `databases[].name` field rather than on `cluster_name`,
+   repointing an app at a different cluster requires renaming that field, and therefore two
+   applies: one that removes the `databases` block and the `DATABASE_URI` env that
+   references it, then one that adds the new binding. The app crashloops between the two,
+   since `server.py` raises without `DATABASE_URI`.
+
+7. Add the app to the database cluster's trusted sources. Binding a cluster in the
+   `databases` block does **not** do this automatically when the cluster already has an
+   explicit allowlist:
+
+   ```bash
+   doctl databases firewalls append <cluster-id> --rule app:<app-id> --context <name>
+   ```
+
+   Use `append`. Do not use `doctl databases firewalls replace`, which substitutes the
+   entire rule set with whatever you pass and will cut other applications off from the
+   database if you omit their rules. Snapshot the existing rules first with
+   `doctl databases firewalls list <cluster-id> -o json`.
+
+   Restart the app afterwards with `doctl apps restart <app-id>`. The connection pool does
+   not recover on its own.
+
+   A read replica keeps its own trusted sources, but inherits a copy of the primary's
+   rules at fork time. If the app was already allowlisted on the primary when you forked
+   the replica, it is carried over and no manual step is needed. A replica forked before
+   the app existed needs the app added explicitly.
+
+   Once the app is confirmed reading the replica, remove it from the *primary's* trusted
+   sources — it no longer needs that access. Removing it is also the cleanest proof the
+   repoint actually took: if the app still connects with no primary allowlist entry, it
+   cannot be talking to the primary.
+
+8. Verify the deployment actually works. **The deployment phase is not sufficient
+   evidence.** The health check path only exercises the OAuth metadata endpoint and never
+   touches Postgres, and `server.py` logs a warning and starts anyway when the database is
+   unreachable, so an app with a completely broken database binding still reports
+   `ACTIVE 7/7`. Check the runtime logs instead:
+
+   ```bash
+   doctl apps logs <app-id> mcp --type run --context <name> | grep -E 'connected to database|RESTRICTED'
+   ```
+
+   Expect `Successfully connected to database` and `RESTRICTED mode`. A failure looks like
+   `couldn't get a connection after 30.00 sec` — a timeout rather than a fast
+   authentication error, which indicates dropped packets, meaning the trusted sources step
+   above was missed.
+
+   Then confirm the endpoint fails closed. All three of these must hold:
+
+   ```
+   GET  /.well-known/oauth-protected-resource/mcp   -> 200, and the "resource" field
+                                                       must echo the real hostname
+   POST /mcp  (no or invalid bearer token)          -> 401
+   GET  /mcp  -H 'Host: evil.example.com'           -> 403
+   ```
+
+   The 403 confirms `ALLOWED_HOSTS` resolved rather than being passed through literally.
+
+   Finally, confirm the server is talking to the cluster you think it is. `Successfully
+   connected to database` does not say *which* database. When a connection fails the log
+   names the server IP, which you can match against the clusters:
+
+   ```bash
+   dig +short <primary-host>.db.ondigitalocean.com
+   dig +short <replica-host>.db.ondigitalocean.com
+   ```
+
+   A repoint that appears to have worked can still be resolving the old cluster, because
+   App Platform keys the attachment on `databases[].name`. The reliable check is the one in
+   step 7: remove the app from the old cluster's trusted sources and confirm it still
+   connects.
 
 The runtime behavior already supports this model: `DATABASE_URI` is read at startup, `ACCESS_MODE` controls readonly enforcement, and the SSE transport is exposed on port 8000.
 
