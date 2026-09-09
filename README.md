@@ -270,13 +270,37 @@ This repo now treats DigitalOcean App Platform as a deployment target, not a bui
    `ALLOWED_HOSTS` drives DNS-rebinding protection, and a hostname mismatch rejects every
    request, including the health check.
 
-   Once a `PRIMARY` custom domain is live, `${APP_DOMAIN}` resolves to it alone, so the
-   generated `*.ondigitalocean.app` hostname stops being an accepted `Host` and returns
-   403. That is usually what you want. If you need the generated hostname to keep working
-   as well, list both explicitly in `ALLOWED_HOSTS` as a comma-separated value instead of
-   using the bindable, which is what `mgo-read-only-pg-mcp` does. Adding or changing the
-   `PRIMARY` domain also changes the OAuth resource identifier, so the Auth0 Allowed
-   Callback URL must be updated to `https://<new-domain>/oauth/callback` at the same time. Note that leaving all three of `AUTH0_ISSUER_URL`,
+   Once a `PRIMARY` custom domain is live, `${APP_DOMAIN}` resolves to that domain alone.
+   Sending any other `Host` header to the app returns 403, including the generated
+   `*.ondigitalocean.app` hostname.
+
+   **`ALLOWED_HOSTS` does not close off the generated hostname.** Requests to the
+   `*.ondigitalocean.app` URL still succeed after a custom domain is added, because App
+   Platform's router rewrites the `Host` header to the primary domain before forwarding to
+   the container. The app therefore never sees the generated hostname and cannot reject it;
+   you can confirm this by requesting the metadata endpoint on the generated URL and
+   observing that `resource` reports the custom domain. `ALLOWED_HOSTS` is
+   DNS-rebinding protection for hosts the router passes through unchanged, not an
+   access control list for your own app's hostnames.
+
+   To actually stop serving on the generated hostname, restrict it at the ingress instead,
+   which is what `mgo-read-only-pg-mcp` does:
+
+   ```yaml
+   ingress:
+     rules:
+       - component:
+           name: mcp
+         match:
+           authority:
+             exact: mcp.example.com
+           path:
+             prefix: /
+   ```
+
+   Adding or changing the `PRIMARY` domain also changes the OAuth resource identifier, so
+   the Auth0 Allowed Callback URL must be updated to `https://<new-domain>/oauth/callback`
+   at the same time. Note that leaving all three of `AUTH0_ISSUER_URL`,
    `AUTH0_AUDIENCE`, and `MCP_RESOURCE_SERVER_URL` unset disables authentication entirely,
    so never deploy a spec against a production database with those omitted.
 

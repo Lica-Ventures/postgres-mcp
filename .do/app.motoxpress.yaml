@@ -71,10 +71,13 @@ services:
 # Note that motoxpress.com is NOT usable here: its nameservers point at
 # Bluehost, so records added in the DigitalOcean panel for that zone never
 # resolve.
-# ALLOWED_HOSTS stays ${APP_DOMAIN}, which resolves to this PRIMARY domain once
-# it is live, so the generated *.ondigitalocean.app hostname stops being an
-# accepted Host and returns 403. The Auth0 Allowed Callback URL must therefore
-# be https://mcp.motoxpress.ph/oauth/callback.
+# ALLOWED_HOSTS stays ${APP_DOMAIN}, which resolves to this PRIMARY domain
+# alone; any other Host header returns 403. Note that this does NOT close off
+# the generated *.ondigitalocean.app URL, which still serves: App Platform's
+# router rewrites Host to the primary domain before the container sees it, so
+# the app cannot reject it. Restrict it with an ingress authority match if that
+# matters. The Auth0 Allowed Callback URL must be
+# https://mcp.motoxpress.ph/oauth/callback.
 domains:
   - domain: mcp.motoxpress.ph
     type: PRIMARY
