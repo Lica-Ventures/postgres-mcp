@@ -19,13 +19,22 @@ services:
         scope: RUN_TIME
         type: GENERAL
       - key: DATABASE_URI
-        value: ${postgres-mcp-db.DATABASE_URL}
+        value: ${motoxpress-v2-api-live-read-only.DATABASE_URL}
         scope: RUN_TIME
         type: GENERAL
       # Auth0 proxy mode — MCP server acts as OAuth AS, proxies to Auth0.
-      # AUTH0_CLIENT_SECRET is intentionally declared without a value. Set it
-      # once in the DO console after the app is created so the platform stores
-      # it encrypted. Never commit the secret to this file.
+      # AUTH0_CLIENT_SECRET is intentionally declared without a value. Set it in
+      # the DO console so the platform stores it encrypted. Never commit the
+      # secret to this file.
+      #
+      # WARNING: `doctl apps update --spec <this file>` REPLACES the whole spec,
+      # so applying this file overwrites the console-set secret with an
+      # encrypted empty string. The app then silently drops out of Auth0 proxy
+      # mode into token-verifier mode: it still requires a bearer token, so it
+      # fails closed rather than open, but Claude Desktop can no longer log in.
+      # After every spec apply, re-set AUTH0_CLIENT_SECRET in the console and
+      # confirm proxy mode by checking that
+      # /.well-known/oauth-authorization-server returns 200 rather than 404.
       - key: AUTH0_CLIENT_ID
         value: vvqnZqU7L6so76X8egB4pLF92MkDff1y
         scope: RUN_TIME
@@ -85,16 +94,34 @@ domains:
     type: PRIMARY
     zone: motoxpress.ph
 databases:
-  # NOTE: this binds the live primary, not a read-only replica. The mechanigo
-  # and inventory apps each bind a replica (mechanigo-db-live-v2-read-only,
-  # lica-inventory-db-live-readonly); the motoxpress team has no Postgres
-  # replica yet. Read-only is still enforced by --access-mode=restricted, but
-  # query load lands on the primary. Switch cluster_name to a replica once one
-  # exists.
-  - name: postgres-mcp-db
+  # Binds the read-only replica of motoxpress-v2-api-live, matching how the
+  # mechanigo and inventory apps bind mechanigo-db-live-v2-read-only and
+  # lica-inventory-db-live-readonly respectively.
+  #
+  # This is defence in depth rather than convenience. --access-mode=restricted
+  # blocks writes in application code; a replica makes Postgres itself refuse
+  # them, so a bug or bypass in that flag cannot mutate production data. It also
+  # keeps MCP query load off the primary.
+  #
+  # The replica is stream-replicated, so reads can lag the primary by a short
+  # interval. Data written through the API moments earlier may not be visible
+  # yet.
+  #
+  # The `name` field below MUST match cluster_name. App Platform keys the
+  # database attachment on `name`, not on cluster_name: changing only
+  # cluster_name under an unchanged `name` leaves the old attachment in place
+  # and DATABASE_URL keeps resolving to the previous cluster, silently. That is
+  # why the mechanigo and inventory apps also set name == cluster_name.
+  #
+  # The replica carries its own trusted sources, separate from the primary's,
+  # but inherits a copy of the primary's rules at fork time. Because this app
+  # was already allowlisted on the primary when the replica was forked, it was
+  # carried over and needed no manual step. A replica forked before the app
+  # existed would need the app added explicitly, or connections time out.
+  - name: motoxpress-v2-api-live-read-only
     engine: PG
     version: "18"
     production: true
-    cluster_name: motoxpress-v2-api-live
+    cluster_name: motoxpress-v2-api-live-read-only
     db_name: motoxpress-v2-api-live
     db_user: doadmin
