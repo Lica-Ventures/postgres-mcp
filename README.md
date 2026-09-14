@@ -240,12 +240,10 @@ Many MCP clients have similar configuration files to Claude Desktop, and you can
 
 This repo now treats DigitalOcean App Platform as a deployment target, not a build target. The code stays the same; each app instance gets its own DO spec and its own database binding.
 
-1. Start from the spec templates in `.do/`:
-   - `.do/app.yaml` is the reusable generic template.
-   - `.do/app.example-a.yaml` is an example for the first readonly database.
-   - `.do/app.example-b.yaml` is an example for the second readonly database.
-   - `.do/app.example-c.yaml` is an example for the example-c database. It lives in a
-     separate DigitalOcean team, so it needs its own `doctl` context.
+1. Write one App Platform spec per app. A minimal readonly spec needs a `services` entry
+   pointing at this repo with `dockerfile_path: /Dockerfile`, a `databases` entry binding
+   the target cluster, and the environment variables in step 2. Apps in different
+   DigitalOcean teams each need their own `doctl` context.
 
 2. For each App Platform app, set these values in the spec you deploy:
    - `services.github.repo` to this GitHub repo slug.
@@ -255,8 +253,7 @@ This repo now treats DigitalOcean App Platform as a deployment target, not a bui
 
    If you are creating a brand new app and do not have a custom domain yet, the default
    `*.ondigitalocean.app` hostname is not known until the app exists. Rather than deploying
-   with a placeholder, use App Platform's bindable variables, as `.do/app.example-c.yaml`
-   does:
+   with a placeholder, use App Platform's bindable variables:
 
    ```yaml
    - key: MCP_RESOURCE_SERVER_URL
@@ -308,22 +305,27 @@ This repo now treats DigitalOcean App Platform as a deployment target, not a bui
    - `DATABASE_URI` should stay bound to `${postgres-mcp-db.DATABASE_URL}`.
    - Do not hardcode host, port, or password values into the spec.
 
-4. Create one App Platform app per database target:
-   - Example A app points at the first readonly database.
-   - Inventory app points at the second readonly database.
-   - The third app points at `example-db-read-only`, a read replica of
-     `example-db`, and serves on `mcp.example.com`. This matches the other
-     two: every MCP app binds a replica rather than a primary, so Postgres itself refuses
-     writes instead of relying on `--access-mode=restricted` alone.
-     Note that most example-c databases are MySQL, which this server cannot read; only
-     the `example-db-*` and `example-cms-db` clusters are Postgres.
-     When creating the replica, pass `--region` explicitly:
-     `doctl databases replica create` defaults to `nyc1` regardless of where the primary
-     lives, which would put the replica an ocean away from the app.
-     Use the `example.com` zone for custom domains, not `example.net`: the latter's
-     nameservers point at a different registrar, so records added in the DigitalOcean panel for that
-     zone never resolve.
-   - Each app gets the same code, but a different database binding and domain.
+4. Create one App Platform app per database target. Each app runs the same code with a
+   different database binding and domain.
+
+   - **Bind a read replica, not the primary.** `--access-mode=restricted` blocks writes in
+     application code; a replica makes Postgres itself refuse them, so a bug or bypass in
+     that flag cannot mutate live data. It also keeps query load off the primary. The
+     trade-off is replication lag: very recent writes may not be visible yet.
+   - **Pass `--region` when creating the replica.** `doctl databases replica create`
+     defaults to `nyc1` regardless of where the primary lives, which can put the replica an
+     ocean away from the app.
+   - **This server reads Postgres only.** A MySQL cluster in the same account is not a
+     valid target.
+   - **Check the zone is really served by DigitalOcean before using it for a custom
+     domain.** A zone can exist in the DigitalOcean panel while the registrar delegates it
+     elsewhere, in which case records added there never resolve. Confirm with
+     `dig +short NS <zone>`, and omit the `zone:` field on the `domains:` entry when
+     DigitalOcean is not authoritative.
+   - **Add the DNS record before attaching the domain.** A `PRIMARY` domain flips
+     `${APP_URL}` immediately, so attaching it while the name does not resolve makes the
+     app advertise OAuth metadata pointing at a dead host. A failed lookup is then cached
+     for the zone's SOA minimum, which is often 24 hours.
 
 5. Deploy each app from its own spec file using the DigitalOcean control panel or `doctl apps update <app-id> --spec <path-to-spec>`.
    For an app in a non-default team, pass the matching context: `doctl apps update <app-id> --spec <path-to-spec> --context <name>`.
@@ -442,7 +444,7 @@ This server can also protect the MCP endpoint with Auth0.
 
 - `AUTH0_ISSUER_URL`: your Auth0 tenant domain, or your Auth0 custom domain if you use one. If you use the default tenant domain, it usually looks like `https://YOUR_TENANT.us.auth0.com/`. If you use a custom domain, get it from Auth0 Dashboard -> Branding -> Custom Domains.
 - `AUTH0_AUDIENCE`: the API Identifier for the Auth0 API you create for this MCP server. Find it in Auth0 Dashboard -> Applications -> APIs -> select your API -> Settings -> Identifier.
-- `MCP_RESOURCE_SERVER_URL`: the public URL of the MCP app itself, such as your DigitalOcean App Platform domain or custom domain. For example-a, that is the URL you set in `MCP_RESOURCE_SERVER_URL` and `ALLOWED_HOSTS`.
+- `MCP_RESOURCE_SERVER_URL`: the public URL of the MCP app itself, such as your DigitalOcean App Platform domain or custom domain. It must match what you set in `ALLOWED_HOSTS`.
 - `MCP_REQUIRED_SCOPES`: optional. Set it to the scope(s) you want the MCP server to require, such as `mcp:use`. If you do not set it, the server defaults to `mcp:use`.
 
 ## SSE Transport
