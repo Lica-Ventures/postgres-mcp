@@ -1,0 +1,126 @@
+# Rapidé Inspection Form Builder — read-only Postgres MCP.
+#
+# This app lives in the `licaventures` DigitalOcean team, project
+# `rapide-autoparts`. That is NOT the team the mechanigo, inventory and
+# motoxpress MCP apps live in (`mechanigoph`). It has to be this team: a
+# DigitalOcean database binding cannot cross teams, and the Rapidé replica
+# belongs to `licaventures`.
+#
+# Deployed and verified: https://rapide-read-only-pg-mcp-9sjnp.ondigitalocean.app
+#
+# GOTCHA, before this spec will apply at all. App Platform stores the GitHub
+# link per DigitalOcean USER per team, not per team alone. `doctl apps create`
+# acts as the token's owner, so it fails with "GitHub user not authenticated"
+# even when the team already runs dozens of GitHub-sourced apps and the repo is
+# granted to the DigitalOcean GitHub App at org level. Neither `apps spec
+# validate` nor `apps propose` catches this; only `apps create` does. The fix
+# is one console step: in the target team, Apps -> Create App -> GitHub,
+# authorize, then cancel the wizard.
+#
+# Shape copied from the live `mgo-read-only-pg-mcp` app spec, not from the
+# older sibling files here. The live app differs from them: envs sit at app
+# level with RUN_AND_BUILD_TIME scope, both DATABASE_URL and DATABASE_URI are
+# set, the instance is 0.5gb, there is no health_check block, and it declares
+# alerts and a buildpack-stack feature.
+name: rapide-read-only-pg-mcp
+region: sgp
+services:
+  - name: postgres-mcp
+    github:
+      repo: Lica-Ventures/postgres-mcp
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: /Dockerfile
+    source_dir: /
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    instance_count: 1
+    http_port: 8000
+    run_command: postgres-mcp --transport=streamable-http --streamable-http-host=0.0.0.0 --streamable-http-port=8000 --access-mode=restricted
+databases:
+  # Bound to the read-only replica of rapide-form-builder-live.
+  #
+  # This is defence in depth, not convenience. --access-mode=restricted blocks
+  # writes in application code; the replica makes Postgres itself refuse them,
+  # so a bug or bypass in that flag cannot mutate live inspection data. It also
+  # keeps MCP query load off the primary. The replica is stream-replicated, so
+  # reads can lag: an inspection submitted moments ago may not be visible yet.
+  #
+  # `name` deliberately does NOT match `cluster_name` here, which breaks the
+  # convention used by the sibling specs. App Platform caps `databases.name` at
+  # 32 characters and `rapide-form-builder-live-read-only` is 34, so the API
+  # rejects the matching name outright.
+  #
+  # The cost of that mismatch: App Platform keys the database attachment on
+  # `name`, not on `cluster_name`. If `cluster_name` is ever edited while
+  # `name` stays the same, the old attachment survives and DATABASE_URL keeps
+  # resolving to the previous cluster, silently. To repoint this app at a
+  # different cluster, change `name` as well, or detach and reattach.
+  - name: rapide-fb-live-read-only
+    engine: PG
+    production: true
+    cluster_name: rapide-form-builder-live-read-only
+    db_name: rapide-form-builder-live
+    db_user: doadmin
+envs:
+  - key: ACCESS_MODE
+    value: restricted
+    scope: RUN_AND_BUILD_TIME
+  # Both names are set because the live mechanigo app sets both. The server
+  # reads DATABASE_URI; DATABASE_URL is kept for parity with its siblings.
+  - key: DATABASE_URL
+    value: ${rapide-fb-live-read-only.DATABASE_URL}
+    scope: RUN_AND_BUILD_TIME
+  - key: DATABASE_URI
+    value: ${rapide-fb-live-read-only.DATABASE_URL}
+    scope: RUN_AND_BUILD_TIME
+  # ${APP_URL} and ${APP_DOMAIN} are resolved by App Platform at deploy time.
+  # They follow the generated *.ondigitalocean.app hostname until a PRIMARY
+  # custom domain is added, then they follow that instead. This app has no
+  # custom domain: rapide.ph is served by ns1/ns2.licagroup.ph, not by
+  # DigitalOcean, so every subdomain needs a CNAME added by hand there. Using
+  # these variables avoids hardcoding a hostname that does not exist yet.
+  - key: ALLOWED_HOSTS
+    value: ${APP_DOMAIN}
+    scope: RUN_AND_BUILD_TIME
+  - key: AUTH0_ISSUER_URL
+    value: https://dev-1whgf1szbodvzfhk.us.auth0.com/
+    scope: RUN_AND_BUILD_TIME
+  # The shared Auth0 API, as used by the inventory app. The mechanigo app
+  # instead uses a per-app audience (https://pgsql-mcp.mechanigo.ph/mcp). A
+  # per-app audience would require creating a new Auth0 API first; the shared
+  # one already exists, so it needs no Auth0 dashboard work.
+  - key: AUTH0_AUDIENCE
+    value: https://mcp.licaventures.com
+    scope: RUN_AND_BUILD_TIME
+  - key: MCP_RESOURCE_SERVER_URL
+    value: ${APP_URL}/mcp
+    scope: RUN_AND_BUILD_TIME
+  - key: MCP_REQUIRED_SCOPES
+    value: mcp:use
+    scope: RUN_AND_BUILD_TIME
+  - key: AUTH0_CLIENT_ID
+    value: vvqnZqU7L6so76X8egB4pLF92MkDff1y
+    scope: RUN_AND_BUILD_TIME
+  # AUTH0_CLIENT_SECRET is intentionally declared with no value. It is stored
+  # on the app as type SECRET, so DigitalOcean encrypts it at rest. Never
+  # commit the value to this file.
+  #
+  # Note this differs from the live mechanigo and inventory apps, which hold
+  # the same secret as a plain GENERAL variable readable by anyone with app
+  # read access. Those are worth converting to SECRET too.
+  #
+  # WARNING: `doctl apps update --spec <this file>` REPLACES the whole spec, so
+  # applying this file overwrites the stored secret with an encrypted empty
+  # string. The app then silently drops out of Auth0 proxy mode into
+  # token-verifier mode: it still demands a bearer token, so it fails closed
+  # rather than open, but Claude Desktop can no longer log in. After every spec
+  # apply, re-set AUTH0_CLIENT_SECRET and confirm proxy mode by checking that
+  # /.well-known/oauth-authorization-server returns 200 rather than 404.
+  - key: AUTH0_CLIENT_SECRET
+    scope: RUN_AND_BUILD_TIME
+    type: SECRET
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED
+features:
+  - buildpack-stack=ubuntu-22
