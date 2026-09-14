@@ -6,7 +6,9 @@
 # DigitalOcean database binding cannot cross teams, and the Rapidé replica
 # belongs to `licaventures`.
 #
-# Deployed and verified: https://rapide-read-only-pg-mcp-9sjnp.ondigitalocean.app
+# Deployed and verified: https://mcp.rapide.ph
+# The generated https://rapide-read-only-pg-mcp-9sjnp.ondigitalocean.app URL also
+# still serves; both advertise the same resource identifier, https://mcp.rapide.ph/mcp.
 #
 # GOTCHA, before this spec will apply at all. App Platform stores the GitHub
 # link per DigitalOcean USER per team, not per team alone. `doctl apps create`
@@ -73,14 +75,12 @@ envs:
   - key: DATABASE_URI
     value: ${rapide-fb-live-read-only.DATABASE_URL}
     scope: RUN_AND_BUILD_TIME
-  # ${APP_URL} and ${APP_DOMAIN} are resolved by App Platform at deploy time.
-  # They follow the generated *.ondigitalocean.app hostname until a PRIMARY
-  # custom domain is added, then they follow that instead. This app has no
-  # custom domain: rapide.ph is served by ns1/ns2.licagroup.ph, not by
-  # DigitalOcean, so every subdomain needs a CNAME added by hand there. Using
-  # these variables avoids hardcoding a hostname that does not exist yet.
+  # Both hostnames are listed, mirroring the live mgo-read-only-pg-mcp app.
+  # ${APP_DOMAIN} would resolve to the PRIMARY domain alone; naming the
+  # generated hostname as well keeps it serving explicitly rather than relying
+  # on App Platform's router rewriting Host to the primary domain.
   - key: ALLOWED_HOSTS
-    value: ${APP_DOMAIN}
+    value: mcp.rapide.ph,rapide-read-only-pg-mcp-9sjnp.ondigitalocean.app
     scope: RUN_AND_BUILD_TIME
   - key: AUTH0_ISSUER_URL
     value: https://dev-1whgf1szbodvzfhk.us.auth0.com/
@@ -92,8 +92,12 @@ envs:
   - key: AUTH0_AUDIENCE
     value: https://mcp.licaventures.com
     scope: RUN_AND_BUILD_TIME
+  # Pinned rather than ${APP_URL}. This is the OAuth resource identifier, so it
+  # must stay stable: if it ever changes, every configured client has to be
+  # re-added. Auth0 Allowed Callback URLs must include
+  # https://mcp.rapide.ph/oauth/callback.
   - key: MCP_RESOURCE_SERVER_URL
-    value: ${APP_URL}/mcp
+    value: https://mcp.rapide.ph/mcp
     scope: RUN_AND_BUILD_TIME
   - key: MCP_REQUIRED_SCOPES
     value: mcp:use
@@ -119,6 +123,25 @@ envs:
   - key: AUTH0_CLIENT_SECRET
     scope: RUN_AND_BUILD_TIME
     type: SECRET
+# Custom domain. Note there is deliberately NO `zone:` field here, unlike the
+# motoxpress spec. `zone:` tells App Platform to manage the DNS records itself,
+# which it cannot do for rapide.ph: the registrar delegates that zone to
+# ns1/ns2.licagroup.ph (203.161.35.59/.60), not to DigitalOcean. A rapide.ph
+# zone does exist in the DigitalOcean panel but holds only SOA and NS records
+# and is never consulted, so anything added there silently fails to resolve.
+#
+# The CNAME must therefore be added by hand at licagroup DNS:
+#   mcp.rapide.ph.  CNAME  rapide-read-only-pg-mcp-9sjnp.ondigitalocean.app.
+# Add it BEFORE applying this spec. A PRIMARY domain flips ${APP_URL} at once,
+# so attaching it while the name does not resolve advertises OAuth metadata
+# pointing at a dead host. The sibling app ifv2.rapide.ph is set up the same
+# way and likewise omits `zone:`.
+#
+# No `ingress` authority match is declared, so the generated
+# *.ondigitalocean.app hostname keeps serving alongside this one.
+domains:
+  - domain: mcp.rapide.ph
+    type: PRIMARY
 alerts:
   - rule: DEPLOYMENT_FAILED
   - rule: DOMAIN_FAILED
